@@ -28,3 +28,7 @@ Se le ha asignado
 Y con add añades las diferentes restricciones
 
 Algo asi
+
+
+**NUEVO TEMA DE TFG**
+Efectivamente, desde hace unos meses estoy de Adjunto a Digitalización en la Escuela y relacionado con esto último tengo un proyecto para mejorar la experiencia de los exámenes en la ETSIDI en términos de seguridad y eficiencia basado en OCR. La idea sería crear una aplicación que gestione la captura y detección de exámenes, generando listas de presentados y generando un justificante al estudiante. Además se puede extender para posibilitar el autocorregirlos.
