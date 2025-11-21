@@ -14,3 +14,14 @@ pip install PyMuPDF
 
 # Procesamiento de imágenes adicional
 pip install scikit-image
+
+
+
+Opción 1: Instalar Tesseract-OCR (Recomendado)
+Descarga e instalación:
+
+Ve a: https://github.com/UB-Mannheim/tesseract/wiki
+
+Descarga tesseract-ocr-w64-setup-5.3.3.20231005.exe
+
+Instálalo en C:\Program Files\Tesseract-OCR\
