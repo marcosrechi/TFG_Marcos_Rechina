@@ -1,5 +1,9 @@
 # pip install tensorflow requests numpy
 
+# AQUI VAS A QUITAR EL MARCO TU A MANO ANTES DE PASARLO POR EL RECONOCIMIENTO
+
+
+
 import tensorflow as tf
 from tensorflow.keras.models import load_model
 from tensorflow.keras.datasets import mnist
@@ -115,11 +119,11 @@ Imagen = Cargar_Paginas_PDF(RutaPDFNormal)
 
 
 CoordenadasROI = [
-    DimensionesROI(x = 484, y = 49, ancho = 12, alto = 18), # x, y, ancho, alto
-    DimensionesROI(x = 495, y = 49, ancho = 12, alto = 18),
-    DimensionesROI(x = 507, y = 49, ancho = 11, alto = 18),
-    DimensionesROI(x = 518, y = 49, ancho = 12, alto = 18),
-    DimensionesROI(x = 529, y = 49, ancho = 12, alto = 18)
+    DimensionesROI(x = 485, y = 51, ancho = 10, alto = 15), # x, y, ancho, alto
+    DimensionesROI(x = 496, y = 51, ancho = 10, alto = 15),
+    DimensionesROI(x = 508, y = 51, ancho = 9, alto = 15),
+    DimensionesROI(x = 519, y = 51, ancho = 10, alto = 15),
+    DimensionesROI(x = 530, y = 51, ancho = 10, alto = 15)
 ]
 
 
@@ -133,232 +137,93 @@ CoordenadasROI = [
 
 
 
-# --- NUEVA VERSIÓN MEJORADA DE LA FUNCIÓN DE PREPROCESAMIENTO PARA MNIST ---
+# --- PRIMER INTENTO DE NUEVA FUNCIÓN DE PREPROCESAMIENTO PARA MNIST ---
 
-# ---------------------------------------------------------------------------------------------
-
-
-
-# # --- FUNCIÓN DE PREPROCESAMIENTO "QUIRÚRGICO" ---
-# def procesar_para_mnist_final(imagen_roi):
-#     # 1. Escala de grises
-#     gris = cv2.cvtColor(imagen_roi, cv2.COLOR_BGR2GRAY)
-    
-#     # 2. Invertir y Binarizar (OTSU) -> Fondo Negro, Letra Blanca
-#     # Bitwise_not porque el PDF es tinta negra sobre blanco
-#     _, thresh = cv2.threshold(cv2.bitwise_not(gris), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-#     # 3. ELIMINAR EL MARCO (Busca contornos)
-#     contornos, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-#     if not contornos:
-#         return None, thresh # Devuelve lo que tenga si falla la detección
-
-#     # Buscamos el contorno más grande
-#     c_mejor = max(contornos, key=cv2.contourArea)
-#     x, y, w, h = cv2.boundingRect(c_mejor)
-    
-#     h_img, w_img = thresh.shape
-    
-#     # Lógica anti-marco: Si el contorno ocupa casi toda la imagen (>85%), es el borde.
-#     # En ese caso, recortamos unos píxeles y buscamos de nuevo dentro.
-#     if w > w_img * 0.85 or h > h_img * 0.85:
-#         margen = 3
-#         thresh_recortado = thresh[margen:h_img-margen, margen:w_img-margen]
-#         contornos_inner, _ = cv2.findContours(thresh_recortado, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-#         if contornos_inner:
-#             c_mejor = max(contornos_inner, key=cv2.contourArea)
-#             x, y, w, h = cv2.boundingRect(c_mejor)
-#             # Ajustamos coordenadas relativas al recorte
-#             x += margen
-#             y += margen
-#             roi_numero = thresh[y:y+h, x:x+w]
-#         else:
-#             roi_numero = thresh # Fallback: usamos la imagen entera
-#     else:
-#         # El contorno ya era el número limpio
-#         roi_numero = thresh[y:y+h, x:x+w]
-
-#     # 4. REDIMENSIONAR MANTENIENDO PROPORCIÓN (Aspect Ratio)
-#     # El número debe caber en 20x20 pixeles para no tocar bordes en la imagen de 28x28
-#     h_roi, w_roi = roi_numero.shape
-#     if h_roi == 0 or w_roi == 0: return None, thresh
-
-#     factor = 20.0 / max(h_roi, w_roi)
-#     nuevo_h, nuevo_w = int(h_roi * factor), int(w_roi * factor)
-    
-#     roi_resized = cv2.resize(roi_numero, (nuevo_w, nuevo_h), interpolation=cv2.INTER_AREA)
-
-#     # 5. CREAR IMAGEN FINAL 28x28 FONDO NEGRO Y CENTRAR
-#     imagen_final = np.zeros((28, 28), dtype=np.uint8)
-    
-#     col_centro = (28 - nuevo_w) // 2
-#     fila_centro = (28 - nuevo_h) // 2
-#     imagen_final[fila_centro:fila_centro+nuevo_h, col_centro:col_centro+nuevo_w] = roi_resized
-
-#     # 6. Normalizar para el modelo
-#     imagen_input = imagen_final / 255.0
-#     imagen_input = imagen_input.reshape(1, 28, 28, 1)
-
-#     return imagen_input, imagen_final
-
-
-
-# ---------------------------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-def procesar_para_mnist_final(imagen_roi):
-    # 1. Escala de grises
+def preprocesar_para_mnist(imagen_roi):
+    # 1. Convertir a escala de grises
     gris = cv2.cvtColor(imagen_roi, cv2.COLOR_BGR2GRAY)
     
-    # 2. Invertir y Binarizar (OTSU) -> Fondo Negro, Letra Blanca
-    _, thresh = cv2.threshold(cv2.bitwise_not(gris), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    
-    h_img, w_img = thresh.shape
+    # 2. Reescalar un poco antes de procesar si es muy pequeña (opcional pero ayuda)
+    # Factor de escala (si la ROI original es muy chica, ej: 12px)
+    scale = 2 
+    gris = cv2.resize(gris, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
 
-    # --- PASO NUEVO: AFEITADO DE BORDES (MASKING) ---
-    # Pintamos de negro un margen de seguridad alrededor.
-    # Esto elimina los restos del marco y SEPARA el número del borde si lo está tocando.
-    # Dado que tu ROI es pequeña (aprox 12x18), borramos 2 o 3 pixeles.
-    margen_seguridad = 2 
+    # 3. Invertir colores (MNIST es blanco sobre negro)
+    gris = cv2.bitwise_not(gris)
     
-    # Crear una máscara negra para borrar los bordes
-    thresh[0:margen_seguridad, :] = 0  # Borde superior
-    thresh[h_img-margen_seguridad:h_img, :] = 0 # Borde inferior
-    thresh[:, 0:margen_seguridad] = 0  # Borde izquierdo
-    thresh[:, w_img-margen_seguridad:w_img] = 0 # Borde derecho
-
-    # 3. MORFOLOGÍA (SANADO)
-    # Al borrar los bordes, quizás cortamos la punta de un 5 o un 7.
-    # Usamos 'Dilate' suave para recuperar volumen o 'Close' para cerrar huecos.
-    kernel = np.ones((2,2), np.uint8)
-    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-
-    # 4. DETECTAR CONTORNOS
-    contornos, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # 4. Binarizar (Thresholding) para limpiar 'ruido' gris
+    # Esto deja el número blanco puro y fondo negro puro
+    _, thresh = cv2.threshold(gris, 127, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
     
-    if not contornos:
-        return None, thresh 
-
-    # --- LÓGICA DE CENTROIDE ---
-    # En lugar de buscar el más grande, buscamos el que esté más cerca del CENTRO de la imagen.
-    centro_img_x = w_img // 2
-    centro_img_y = h_img // 2
+    # 5. MANTENER RELACIÓN DE ASPECTO (Padding)
+    # Queremos meter la imagen rectangular en un cuadrado negro sin estirarla
+    filas, cols = thresh.shape
     
-    mejor_contorno = None
-    menor_distancia = float('inf')
-    
-    for c in contornos:
-        x, y, w, h = cv2.boundingRect(c)
-        area = w * h
+    if filas > cols:
+        factor = 20.0 / filas
+        filas_nuevas = 20
+        cols_nuevas = int(cols * factor)
+    else:
+        factor = 20.0 / cols
+        cols_nuevas = 20
+        filas_nuevas = int(filas * factor)
         
-        # Descartar ruido muy pequeño (puntos sucios)
-        if area < 5: continue
-            
-        # Calcular el centro de este contorno
-        cx = x + w // 2
-        cy = y + h // 2
-        
-        # Calcular distancia al centro de la imagen (Teorema Pitágoras)
-        distancia = math.sqrt((cx - centro_img_x)**2 + (cy - centro_img_y)**2)
-        
-        # Priorizamos el objeto central. 
-        # (Opcional: puedes ponderar también el área si quieres)
-        if distancia < menor_distancia:
-            menor_distancia = distancia
-            mejor_contorno = c
-
-    if mejor_contorno is None:
-        return None, thresh
-
-    # Recortar el ganador
-    x, y, w, h = cv2.boundingRect(mejor_contorno)
-    roi_numero = thresh[y:y+h, x:x+w]
-
-    # 5. REDIMENSIONAR MANTENIENDO PROPORCIÓN (Igual que antes)
-    h_roi, w_roi = roi_numero.shape
-    if h_roi == 0 or w_roi == 0: return None, thresh
-
-    factor = 20.0 / max(h_roi, w_roi)
-    nuevo_h, nuevo_w = int(h_roi * factor), int(w_roi * factor)
+    # Redimensionar a max 20x20 (dejando margen para llegar a 28x28)
+    img_mini = cv2.resize(thresh, (cols_nuevas, filas_nuevas), interpolation=cv2.INTER_AREA)
     
-    roi_resized = cv2.resize(roi_numero, (nuevo_w, nuevo_h), interpolation=cv2.INTER_AREA)
-
-    # 6. CENTRAR EN 28x28
+    # Crear imagen negra de 28x28
     imagen_final = np.zeros((28, 28), dtype=np.uint8)
-    col_centro = (28 - nuevo_w) // 2
-    fila_centro = (28 - nuevo_h) // 2
     
-    # Pegado seguro
-    end_y = min(fila_centro+nuevo_h, 28)
-    end_x = min(col_centro+nuevo_w, 28)
-    imagen_final[fila_centro:end_y, col_centro:end_x] = roi_resized[0:end_y-fila_centro, 0:end_x-col_centro]
+    # Calcular centro para pegar el número
+    col_centro = (28 - cols_nuevas) // 2
+    fila_centro = (28 - filas_nuevas) // 2
+    
+    # Pegar el número redimensionado en el centro del cuadro negro
+    imagen_final[fila_centro:fila_centro+filas_nuevas, col_centro:col_centro+cols_nuevas] = img_mini
+    
+    # 6. Normalizar
+    imagen_final = imagen_final / 255.0
+    imagen_final = imagen_final.reshape(1, 28, 28, 1)
+    
+    return imagen_final, thresh # Devolvemos thresh solo para guardar la foto y verla
 
-    # 7. Normalizar
-    imagen_input = imagen_final / 255.0
-    imagen_input = imagen_input.reshape(1, 28, 28, 1)
-
-    return imagen_input, imagen_final
-
-
-
-
-
-
-
-
-
-# --- BUCLE PRINCIPAL ---
-
-print(f"Procesando {len(CoordenadasROI)} cifras...")
+# --- TU BUCLE MODIFICADO ---
 
 for i, (Coordenada, cifra_esperada) in enumerate(zip(CoordenadasROI, numero_esperado)):
-
-    # 1. Extraer recorte crudo del PDF
-    ZonaRaw = Extraer_ROI_Iamgen(Imagen, Coordenada)
-
-    if ZonaRaw is None or ZonaRaw.size == 0:
-        print(f"Error: ROI {i+1} vacía.")
-        continue
-
-    # 2. Preprocesar (Quitar marco y centrar)
-    img_input, imagen_debug = procesar_para_mnist_final(ZonaRaw)
     
-    if img_input is None:
-        print(f"Cifra {i+1}: No se detectó dígito.")
+    # NOTA: Si subiste el DPI a 300, multiplica tus coordenadas aquí
+    # factor_correccion = 2 # Si pasaste de 150 a 300 dpi
+    # Coordenada.x *= factor_correccion
+    # Coordenada.y *= factor_correccion
+    # ... etc
+
+    Zona7segmentos = Extraer_ROI_Iamgen(Imagen, Coordenada)
+
+    if Zona7segmentos is None:
+        print("¡ERROR! ROI vacía.")
         continue
 
-    # 3. Predecir
-    prediccion = modelo.predict(img_input, verbose=0)
+    # Usamos la nueva función de preprocesamiento
+    imagen_entrada, imagen_debug = preprocesar_para_mnist(Zona7segmentos)
+
+    # Predicción
+    prediccion = modelo.predict(imagen_entrada, verbose=0) # verbose=0 quita el log de keras
     numero_predicho = np.argmax(prediccion)
     confianza = np.max(prediccion) * 100
 
-    # 4. Guardar imagen con el nombre solicitado
+    print(f"--- Cifra {i+1} ---")
+    print(f"Real: {cifra_esperada} | Predicho: {numero_predicho}")
+    print(f"Confianza: {confianza:.2f}%")
+
+    # Guardar imagen para depuración (La que realmente ve el modelo antes de normalizar)
     nombre_archivo = rf"{RutaImagenDestino}\Cifra_{i+1}_Esperado_{cifra_esperada}_Obtenido_{numero_predicho}.png"
-    cv2.imwrite(nombre_archivo, imagen_debug)
-
-    # Imprimir resultado en consola
-    estado = "✅" if numero_predicho == cifra_esperada else "❌"
-    print(f"Cifra {i+1} [{estado}] | Real: {cifra_esperada} -> Pred: {numero_predicho} ({confianza:.1f}%)")
-    print(f"   -> Guardado: Cifra_{i+1}_Esperado_{cifra_esperada}_Obtenido_{numero_predicho}.png")
-
-print("\n--- Proceso finalizado ---")
+    # Guardamos la imagen cuadrada de 28x28 (des-normalizada para verla bien)
+    cv2.imwrite(nombre_archivo, (imagen_entrada.reshape(28,28) * 255).astype(np.uint8))
 
 
-
-
-
-
-
-
-
+    
+    if cifra_esperada != numero_predicho:
+        print("⚠️ FALLO DETECTADO")
 
 
 
