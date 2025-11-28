@@ -12,8 +12,7 @@ import numpy as np
 import requests
 import fitz
 
-
-import math
+import pytesseract
 
 
 class DimensionesROI:
@@ -203,11 +202,16 @@ for i, (Coordenada, cifra_esperada) in enumerate(zip(CoordenadasROI, numero_espe
         print("¡ERROR! ROI vacía.")
         continue
 
+    nombre_archivo = rf"{RutaImagenDestino}\ZonaRaw_Cifra_{i+1}.png"
+    cv2.imwrite(nombre_archivo, Zona7segmentos)
+
     # Usamos la nueva función de preprocesamiento
     imagen_entrada, imagen_debug = preprocesar_para_mnist(Zona7segmentos)
 
     # Predicción
-    prediccion = modelo.predict(imagen_entrada, verbose=0) # verbose=0 quita el log de keras
+    # prediccion = modelo.predict(imagen_entrada, verbose=0) # verbose=0 quita el log de keras
+    custom_config = r'--psm 10 --oem 3 -c tessedit_char_whitelist=0123456789'
+    prediccion = pytesseract.image_to_string(imagen_entrada, config=custom_config)
     numero_predicho = np.argmax(prediccion)
     confianza = np.max(prediccion) * 100
 
