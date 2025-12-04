@@ -51,10 +51,13 @@ url = "https://github.com/R4F405/Reconocimiento-de-Digitos-MNIST/raw/main/modelo
 model_filename = "modelo_mnist.keras"
 # ruta_imagen = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas\roi_extraida8.png"
 RutaPDF7Seg = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\test 7seg Epson_19092025163133 pag1.pdf"
-# RutaPDFNormal = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Epson_12112025210213 8_Censurado.pdf"
-RutaPDFNormal = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Epson_12112025210213 8_Censurado.pdf"
-RutaImagenDestino = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas"
+RutaPDFNormal = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Epson_12112025210213 8_Censurado.pdf"
+# RutaPDFNormal = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Epson_12112025210213 8_Censurado.pdf"
+# RutaImagenDestino = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas"
+RutaImagenDestino = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas"
 numero_esperado = [5, 6, 8, 5, 9]
+
+custom_config = r'--psm 10 --oem 3 -c tessedit_char_whitelist=0123456789'
 
 iteracion = 1
 
@@ -134,6 +137,43 @@ CoordenadasROI = [
 
 
 
+def preprocesar_para_tesseract(imagen_roi):
+    # 1. Escala de grises
+    gris = cv2.cvtColor(imagen_roi, cv2.COLOR_BGR2GRAY)
+    
+    # 2. AUMENTAR TAMAÑO (Upscaling)
+    # Tesseract ODIA las imágenes de 28x28, son demasiado pequeñas.
+    # Necesitamos que la imagen sea más grande para que vea bien los bordes.
+    scale = 3 
+    gris = cv2.resize(gris, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+    # 3. Binarizar (OTSU)
+    # NOTA: Tesseract prefiere fondo BLANCO y letra NEGRA.
+    # Si tu ROI original es fondo blanco, NO inviertas.
+    # Si usas THRESH_BINARY (sin INV), obtienes fondo blanco y letra negra si la entrada era así.
+    _, thresh = cv2.threshold(gris, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    
+    # 4. LIMPIEZA DE BORDES (Igual que antes, para quitar el marco)
+    h, w = thresh.shape
+    margen = 5 # Aumentamos margen porque hemos escalado la imagen x3
+    thresh[0:margen, :] = 255       # Pintamos de BLANCO (fondo)
+    thresh[h-margen:h, :] = 255
+    thresh[:, 0:margen] = 255
+    thresh[:, w-margen:w] = 255
+
+    # 5. DILATACIÓN SUAVE (Opcional)
+    # Si la letra quedó muy fina, la engordamos un poco (Erosionar en modo fondo blanco engorda la letra negra)
+    kernel = np.ones((2,2), np.uint8)
+    thresh = cv2.erode(thresh, kernel, iterations=1)
+
+    # 6. AÑADIR UN BORDE BLANCO ALREDEDOR (Padding)
+    # A Tesseract no le gusta que la letra toque el borde de la imagen.
+    thresh = cv2.copyMakeBorder(thresh, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
+
+    # NO normalizamos (/255) ni hacemos reshape. Devolvemos la imagen uint8 tal cual.
+    return thresh
+
+
 
 
 # --- PRIMER INTENTO DE NUEVA FUNCIÓN DE PREPROCESAMIENTO PARA MNIST ---
@@ -186,6 +226,8 @@ def preprocesar_para_mnist(imagen_roi):
     
     return imagen_final, thresh # Devolvemos thresh solo para guardar la foto y verla
 
+
+
 # --- TU BUCLE MODIFICADO ---
 
 for i, (Coordenada, cifra_esperada) in enumerate(zip(CoordenadasROI, numero_esperado)):
@@ -206,28 +248,37 @@ for i, (Coordenada, cifra_esperada) in enumerate(zip(CoordenadasROI, numero_espe
     cv2.imwrite(nombre_archivo, Zona7segmentos)
 
     # Usamos la nueva función de preprocesamiento
-    imagen_entrada, imagen_debug = preprocesar_para_mnist(Zona7segmentos)
+    # imagen_entrada, imagen_debug = preprocesar_para_mnist(Zona7segmentos)
+    imagen_entrada = preprocesar_para_tesseract(Zona7segmentos)
 
     # Predicción
     # prediccion = modelo.predict(imagen_entrada, verbose=0) # verbose=0 quita el log de keras
-    custom_config = r'--psm 10 --oem 3 -c tessedit_char_whitelist=0123456789'
-    prediccion = pytesseract.image_to_string(imagen_entrada, config=custom_config)
-    numero_predicho = np.argmax(prediccion)
-    confianza = np.max(prediccion) * 100
+
+    # prediccion = pytesseract.image_to_string(imagen_entrada, config=custom_config)
+    # numero_predicho = np.argmax(prediccion)
+    # confianza = np.max(prediccion) * 100
+
+    texto = pytesseract.image_to_string(imagen_entrada, config=custom_config)
+    numero_predicho = texto.strip()
 
     print(f"--- Cifra {i+1} ---")
     print(f"Real: {cifra_esperada} | Predicho: {numero_predicho}")
-    print(f"Confianza: {confianza:.2f}%")
+    # print(f"Confianza: {confianza:.2f}%")
 
     # Guardar imagen para depuración (La que realmente ve el modelo antes de normalizar)
-    nombre_archivo = rf"{RutaImagenDestino}\Cifra_{i+1}_Esperado_{cifra_esperada}_Obtenido_{numero_predicho}.png"
+    # nombre_archivo = rf"{RutaImagenDestino}\Cifra_{i+1}_Esperado_{cifra_esperada}_Obtenido_{numero_predicho}.png"
     # Guardamos la imagen cuadrada de 28x28 (des-normalizada para verla bien)
-    cv2.imwrite(nombre_archivo, (imagen_entrada.reshape(28,28) * 255).astype(np.uint8))
+    # cv2.imwrite(nombre_archivo, (imagen_entrada.reshape(28,28) * 255).astype(np.uint8))
+    nombre_archivo = rf"{RutaImagenDestino}\Cifra_{i+1}_Esperado_{cifra_esperada}_Obtenido_{numero_predicho}_Tesseract.png"
+    cv2.imwrite(nombre_archivo, imagen_entrada)
 
 
     
     if cifra_esperada != numero_predicho:
         print("⚠️ FALLO DETECTADO")
+
+
+
 
 
 
