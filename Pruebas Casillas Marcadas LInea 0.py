@@ -34,29 +34,48 @@ def Extraer_ROI_Iamgen(Imagen, Coordenadas):
 
     return Recorte
 
-def leer_dni_omr_con_x(imagen):
-    gray = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    
-    # 1. Umbralización (igual que antes)
-    thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
-    
-    # --- NUEVO PASO: DILATACIÓN ---
-    
-    # Definimos un "kernel". Es la forma del "pincel" que usaremos para engordar.
-    # Un kernel de (3,3) o (5,5) suele funcionar bien.
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    
-    # Aplicamos la dilatación.
-    # iterations=2 significa que aplicamos el engorde dos veces para asegurar.
-    thresh_dilatado = cv2.dilate(thresh, kernel, iterations=2)
-    
-    # ------------------------------
-    
-    # IMPORTANTE: Ahora pasas 'thresh_dilatado' a tu función de contar,
-    # NO la 'thresh' original.
-    return imagen, thresh_dilatado
 
+def eliminar_lineas_horizontales(imagen_thresh):
+    """
+    Detecta líneas horizontales largas sin afectar al grosor de las cajas.
+    Estrategia: Crear una máscara de la línea y restarla.
+    """
+    # 1. Crear una imagen vacía para detectar solo la línea
+    # Si tu min_size es 10, la caja mide aprox 10-15px de ancho.
+    # El kernel debe ser EL DOBLE de ancho para asegurar que NO detecta cajas.
+    ancho_kernel = 25 
+    kernel_horizontal = cv2.getStructuringElement(cv2.MORPH_RECT, (ancho_kernel, 1))
+
+    # 2. MORPH_OPEN: Aislar la estructura horizontal
+    # Esto elimina todo lo que sea más estrecho que 'ancho_kernel'.
+    # Como tus cajas miden ~15px y el kernel 25px, las cajas desaparecen de 'temp_lines'.
+    # Solo queda la línea larga de abajo.
+    mask_linea = cv2.morphologyEx(imagen_thresh, cv2.MORPH_OPEN, kernel_horizontal)
+
+    # 3. Engrosar la línea detectada (Dilatación)
+    # Aquí solucionamos el problema de que "solo la hace más fina".
+    # Expandimos la línea detectada verticalmente para asegurarnos de cubrir 
+    # todo el grosor de la línea original, incluso si es irregular.
+    kernel_dilatacion = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 2)) # 1px de alto
+    mask_linea = cv2.dilate(mask_linea, kernel_dilatacion, iterations=2)
+
+    # 4. Resta Quirúrgica (Bitwise NOT + AND)
+    # Invertimos la máscara de líneas: Ahora la línea es negra (0) y el fondo blanco (255)
+    mask_linea_inv = cv2.bitwise_not(mask_linea)
+
+    # Combinamos: "Conserva la imagen original DONDE la máscara invertida sea blanca"
+    # Es decir: Imagen Original - Línea Detectada = Imagen Limpia
+    img_sin_lineas = cv2.bitwise_and(imagen_thresh, imagen_thresh, mask=mask_linea_inv)
+    
+    
+    # # 5. PASO EXTRA: Reparación de Cajas (MORPH_CLOSE)
+    # # Si al borrar la línea hemos "mordido" un poco la base de la caja,
+    # # este paso busca huecos verticales pequeños y los cierra.
+    # # Usamos un kernel (1, 5) -> Solo repara en vertical, no re-une la línea horizontal.
+    # kernel_reparacion = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 5))
+    # img_reparada = cv2.morphologyEx(img_sin_lineas, cv2.MORPH_CLOSE, kernel_reparacion)
+
+    return img_sin_lineas
 
 
 def leer_dni_omr(imagen):
@@ -71,52 +90,10 @@ def leer_dni_omr(imagen):
     # THRESH_BINARY_INV convierte lo oscuro (lápiz) en blanco y el papel en negro.
     # Otsu encuentra el umbral óptimo automáticamente.
     thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
-    
-    return imagen, thresh
 
-
-
-def procesar_cuadricula(thresh_image, num_digitos=6, opciones=10):
-    # Obtenemos las dimensiones de la imagen recortada
-    altura, ancho = thresh_image.shape
+    thresh_cambiado = eliminar_lineas_horizontales(thresh)
     
-    # Calculamos el tamaño de cada celda individual
-    ancho_celda = ancho // num_digitos
-    alto_celda = altura // opciones
-    
-    dni_detectado = ""
-    
-    # Recorremos cada columna (cada dígito del DNI)
-    for j in range(num_digitos):
-        fila_mas_marcada = -1
-        max_pixeles = -1
-        
-        # Empezamos en x para esta columna
-        start_x = j * ancho_celda
-        end_x = (j + 1) * ancho_celda
-        
-        # Recorremos las 10 opciones (0-9) hacia abajo
-        for i in range(opciones):
-            start_y = i * alto_celda
-            end_y = (i + 1) * alto_celda
-            
-            # Recortamos esa celda específica (ROI - Region of Interest)
-            celda = thresh_image[start_y:end_y, start_x:end_x]
-            
-            # CONTAMOS PÍXELES NO CERO (Blancos)
-            # Esto nos dice cuánta "tinta" hay en la casilla
-            total_pixeles = cv2.countNonZero(celda)
-            
-            # Si esta celda tiene más tinta que la anterior récord, es la ganadora
-            if total_pixeles > max_pixeles:
-                max_pixeles = total_pixeles
-                fila_mas_marcada = i
-        
-        # Añadimos el número ganador al resultado
-        dni_detectado += str(fila_mas_marcada)
-        
-    return dni_detectado
-
+    return imagen, thresh, thresh_cambiado
 
 
 # --- FUNCIÓN AUXILIAR PARA ORDENAR ---
@@ -140,7 +117,6 @@ def ordenar_contornos(cnts, metodo="left-to-right"):
 
 
 
-
 # --- NUEVA FUNCIÓN PRINCIPAL DE LECTURA ---
 def detectar_resultado_omr(imagen_thresh):
     """
@@ -158,13 +134,13 @@ def detectar_resultado_omr(imagen_thresh):
 
     # 2. Filtrar contornos para quedarse solo con las casillas cuadradas
     # IMPORTANTE: Ajusta 'min_size' si tus cajas son más pequeñas o más grandes en píxeles.
-    min_size = 3
+    min_size = 10
     for c in cnts:
         (x, y, w, h) = cv2.boundingRect(c)
         ar = w / float(h) # Relación de aspecto
 
         # Filtro: deben ser suficientemente grandes y aproximadamente cuadradas (ar entre 0.8 y 1.2)
-        if w >= min_size and h >= min_size and ar >= 0.8 and ar <= 1.2:
+        if w >= min_size and h >= min_size and ar >= 0.5 and ar <= 1.5:
             cajas_cnts.append(c)
 
     if len(cajas_cnts) == 0:
@@ -176,11 +152,15 @@ def detectar_resultado_omr(imagen_thresh):
     cajas_cnts = ordenar_contornos(cajas_cnts, metodo="top-to-bottom")[0]
 
     # Asumimos que siempre hay 10 filas (para los dígitos del 0 al 9)
-    filas_esperadas = 9
+
+    # filas_esperadas = 9
+    filas_esperadas = 10
+    
     total_cajas = len(cajas_cnts)
     cols_esperadas = total_cajas // filas_esperadas
 
-    resultados_detectados = ['0'] * cols_esperadas
+    # resultados_detectados = ['0'] * cols_esperadas
+    resultados_detectados = ['X'] * cols_esperadas
 
     # 4. Iterar por bloques de filas
     # Usamos np.arange para saltar de fila en fila (ej: 0, 8, 16... si hay 8 columnas)
@@ -215,7 +195,8 @@ def detectar_resultado_omr(imagen_thresh):
                 # # Guardamos tupla: (posición_columna, valor_detectado)
                 # resultados_detectados.append((col_idx, valor_digito))
                 
-                resultados_detectados[col_idx] = str(fila_idx + 1)
+                # resultados_detectados[col_idx] = str(fila_idx + 1)
+                resultados_detectados[col_idx] = str(fila_idx)
 
                 print(f"Casilla reconocida")
 
@@ -250,18 +231,17 @@ CoordenadasROI = DimensionesROI(x = 387, y = 135, ancho = 110, alto = 170)
 
 Recorte = Extraer_ROI_Iamgen(Imagen, CoordenadasROI)
 
-Recorte, Recorte_procesado = leer_dni_omr(Recorte)
+Recorte, Recorte_procesado, Recorte_procesado_cambiado = leer_dni_omr(Recorte)
 
 cv2.imwrite(os.path.join(RutaImagenDestino, rf"PruebaCuadricula.jpg"), Recorte)
 cv2.imwrite(os.path.join(RutaImagenDestino, rf"PruebaCuadriculaProcesada.jpg"), Recorte_procesado)
+cv2.imwrite(os.path.join(RutaImagenDestino, rf"PruebaCuadriculaProcesadaCambiada.jpg"), Recorte_procesado_cambiado)
 
-# num_mat = procesar_cuadricula(Recorte_procesado)
-num_mat = detectar_resultado_omr(Recorte_procesado)
 
+num_mat = detectar_resultado_omr(Recorte_procesado_cambiado)
 print(f"El Numero de Matricula detectado es: {num_mat}")
 
 
 # --- USO DEL CÓDIGO ---
 # img_original, img_procesada = leer_dni_omr('recorte_dni.jpg')
-# dni = procesar_cuadricula(img_procesada)
 # print(f"El DNI detectado es: {dni}")
