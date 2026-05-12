@@ -3,9 +3,13 @@ Libraries we need to install in order to work the script
 # Instalación básica de librerías esenciales
 pip install opencv-python
 pip install numpy
-pip install pytesseract
-pip install Pillow
+pip install Pillow (o pillow no estoy seguro)
+pip install watchdog 
+pip install pystray
+
+# Para OMR / OCR
 pip install matplotlib
+pip install pytesseract
 
 # Para trabajar con PDFs
 pip install PyPDF2
@@ -25,3 +29,12 @@ Ve a: https://github.com/UB-Mannheim/tesseract/wiki
 Descarga tesseract-ocr-w64-setup-5.3.3.20231005.exe
 
 Instálalo en C:\Program Files\Tesseract-OCR\
+
+
+Y PONER LO DEL PEQUEÑO ICONO
+
+PONER LA RUTA EN LA QUE ESTA EN EL EXAMEN
+
+Y PONER CUANDO SE TERMINA EL PROGRAMA CUANTOS EXAMENES SE HAN DETECTADO
+
+PONER QUE LA RUTA DEL JSON SEA RELATIVA
