@@ -2,7 +2,7 @@
 setlocal
 
 :: --- CONFIGURACIÓN ---
-set SCRIPT_PRINCIPAL=WatcherModif.py
+set SCRIPT_PRINCIPAL=Watcher.py
 set NOMBRE_EJECUTABLE=GestorExamenes
 :: ---------------------
 
