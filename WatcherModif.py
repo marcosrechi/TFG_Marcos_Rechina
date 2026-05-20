@@ -1,6 +1,3 @@
-# Para parar el programa antes de tiempo
-import sys
-
 # Para trabajar con hilos
 import threading
 
@@ -37,7 +34,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 # El script encargado de obtener el numero de matrícula del PDF
-from CasillasMarcadasModif import Extraer_Numero_Matricula # type: ignore
+from CasillasMarcadas import Extraer_Numero_Matricula # type: ignore
 
 # Variable para guardar la configuración elegida por el usuario
 CONFIG = {}
@@ -46,15 +43,21 @@ CONFIG = {}
 RUTA_FICHERO_DESTINO = None
 DICCIONARIO_ALUMNOS = None
 
+RUTA_LOG_ERRORES = None
+
 # Datos de correo origen
 CORREO_ORIGEN = "pruebastfgmarcosrechina@gmail.com"
 PASSWORD_ORIGEN = "jjao hbsb hvee jpqh"
 
-# Nombre de la asignatura en cuestión (por defecto Informática)
-NOMBRE_ASIGNATURA = "Informática"
+# Nombre de la asignatura en cuestión
+NOMBRE_ASIGNATURA = ""
+
+COLUMNA_NOMBRE = ""
+COLUMNA_MATRICULA = ""
+COLUMNA_CORREO = ""
 
 
-# --------------------------------------------- TENGO QUE CAMBIARLO -----------------------------------------------------
+
 # Función encargada de procesar cada nuevo PDF
 def procesar_nuevo_pdf(ruta, callback_status):
 
@@ -79,8 +82,20 @@ def procesar_nuevo_pdf(ruta, callback_status):
             numero_matricula = Extraer_Numero_Matricula(ruta)
 
             # Comprueba que el número de matrícula sea válildo
-            if "x" in numero_matricula.lower():
-                callback_status(f"Error en la obtención del número de matrícula del archivo {nombre_archivo}...")
+            if "x" in numero_matricula.lower() or "m" in numero_matricula.lower():
+
+                # Guardo el error en un LOG de errores
+                escrbir_log_errores(nombre_archivo, ruta, numero_matricula)
+
+                # Actualizo el mensaje de la interfaz para que lo vea el usuario
+                callback_status(f"ERROR: Matrícula '{numero_matricula}' no válida en {nombre_archivo}")
+                
+                # Pausamos 2 segundos para que el usuario pueda leer el mensaje en la interfaz
+                time.sleep(2)
+
+                # Modifica el texto para la espera de un nuevo PDF
+                callback_status(f"Esperando nuevo PDF ...")
+
                 return None
 
             # Busca el número de matrícula en la base de datos y obtiene los datos del alumno
@@ -98,7 +113,11 @@ def procesar_nuevo_pdf(ruta, callback_status):
 
             # Se actualiza el fichero con los datos del alumno detectado
             callback_status(f"Actualizando fichero ...")
-            escribir_csv(numero_matricula, datos_alumno, ruta)
+            # Si se ha elegido actualizar el fichero existente llamo a una función, de lo contrario llamo a otra
+            if CONFIG.get("actualizar_fichero"):
+                actualizar_csv(numero_matricula, datos_alumno, ruta)
+            else:
+                escribir_csv_nuevo(numero_matricula, datos_alumno, ruta)
 
             # Modifica el texto para la espera de un nuevo PDF
             callback_status(f"Esperando nuevo PDF ...")
@@ -106,8 +125,39 @@ def procesar_nuevo_pdf(ruta, callback_status):
         except Exception as e:
             print(f"[ERROR] {e}")
 
+# Función encargada de escribir un log de los errores de detección de matrícula (x en el número de matrícula)
+def escrbir_log_errores(nombre_archivo, ruta, numero_matricula):
+
+    # Cojo las variables globales
+    global RUTA_FICHERO_DESTINO, RUTA_LOG_ERRORES
+
+    # Si aún no se ha guardado la ruta del LOG, lo guardo ahora
+    if RUTA_LOG_ERRORES is None:
+
+        # Guardo el log de errores en la misma carpeta que el fichero de alumnos
+        carpeta_log = os.path.dirname(RUTA_FICHERO_DESTINO)
+
+        # Si por algún motivo no lo encuentra, lo guarda en el actual (debería existir ya que hemos hecho la comprobación antes)
+        if not carpeta_log:
+            carpeta_log = "."
+
+        # Guardo la ruta del archivo para el log de errores
+        RUTA_LOG_ERRORES = os.path.join(carpeta_log, "LOG_ERR_DETECCION_MATRICULA.txt")
+    
+    # Guardo la hora del error
+    hora_error = time.strftime("%d/%m/%Y %H:%M:%S")
+
+    # Escribo tanto la hora del error, el nombre del archivo, la ruta completa de este y el numero de matrícula leído. Dejo después espacio para el posible siguiente error
+    with open(RUTA_LOG_ERRORES, "a", encoding="utf-8") as log_file:
+        log_file.write(f"[{hora_error}] ERROR DE DETECCIÓN\n")
+        log_file.write(f"Archivo: {nombre_archivo}\n")
+        log_file.write(f"Ruta completa: {ruta}\n")
+        log_file.write(f"Matrícula fallida: {numero_matricula}\n")
+        log_file.write(f"\"X\" en la matrícula: cifra no detectada - \"M\" en la matrícula: Más de una casilla marcada para la misma cifra \n")
+        log_file.write("-" * 60 + "\n\n")
+
 # Detecta si el archivo está en uso o está liberado
-def esperar_liberacion_archivo(ruta, intentos=10, delay=1):
+def esperar_liberacion_archivo(ruta, intentos=20, delay=1):
 
     # Lo abrimos en modo "append" para verificarlo
     # Hace varios intentos para ver si está liberado antes de rendirse
@@ -126,24 +176,113 @@ def esperar_liberacion_archivo(ruta, intentos=10, delay=1):
     # Si podemos abrirlo en 'append', significa que está liberado - DEVOLVEMOS UN FALSE
     return False
 
-# Función encargada de actualizar el fichero con los datos del alumno reconocido
-def escribir_csv(numero_matricula, datos_alumno, ruta_pdf):
+# Función para escribir el nuevo fichero
+def escribir_csv_nuevo(numero_matricula, datos_alumno, ruta_pdf):
 
-    global RUTA_FICHERO_DESTINO
+    global RUTA_FICHERO_DESTINO, COLUMNA_MATRICULA, COLUMNA_NOMBRE, COLUMNA_CORREO
 
     # Para guardar la hora de entrega
     hora_entrega = time.strftime("%d/%m/%Y %H:%M", time.localtime())
 
     # Compruebo que datos se eligen guardar
     # Añadimos los nuevos según CONFIG si no estaban ya
-    cabeceras_deseadas = ["Numero Matricula", "Nombre", "Correo"]
+    cabeceras_finales = ["Numero Matricula", "Nombre", "Correo"]
+    if CONFIG.get("incluir_fecha_entrega"): cabeceras_finales.append("Hora Entrega")
+    if CONFIG.get("incluir_nota"): cabeceras_finales.append("Nota")
+    if CONFIG.get("incluir_ruta"): cabeceras_finales.append("Ruta Examen")
+
+    fichero_completo = []  
+    
+    # Si el fichero aún no existe, nos saltamos la parte de leer el existente y vamos directamente a escribir la nueva fila para crear el fichero por primera vez 
+    if os.path.exists(RUTA_FICHERO_DESTINO):
+
+        # Leo el fichero y guardo todos los datos
+        try:
+            # Abrimos el fichero y vemos si estánlas cabeceras deseadas
+            with open(RUTA_FICHERO_DESTINO, mode='r', encoding='utf-8-sig') as f:
+
+                # Guardo todos los datos de la base de datos
+                lector = csv.DictReader(f, delimiter=';')
+
+                # Guardo uno a uno los datos de cada fila en la variable
+                for fila in lector:
+                    fichero_completo.append(fila)
+
+        except Exception as e:
+            print(f"Error leyendo archivo existente: {e}")
+
+    # Busco en alumno en cuestión en el fichero de destino y actualizo la información en la variable
+    alumno_encontrado = False
+    for fila in fichero_completo:
+
+        if fila.get("Numero Matricula") == numero_matricula:
+
+            # # Para actualizar el nombre y correo de la persona (NO ESTRICTAMENTE NECESARIO, NO DEBERÍAN CAMBIAR ESTOS DATOS)
+            # if datos_alumno:
+            #     fila["Nombre"] = datos_alumno.get(COLUMNA_NOMBRE)
+            #     fila["Correo"] = datos_alumno.get(COLUMNA_CORREO)
+
+            # Actualizamos solo los campos elegidos por el usuario
+            if CONFIG.get("incluir_fecha_entrega"): fila["Hora Entrega"] = hora_entrega
+            if CONFIG.get("incluir_nota"): fila["Nota"] = "S/C"
+            if CONFIG.get("incluir_ruta"): fila["Ruta Examen"] = ruta_pdf
+            alumno_encontrado = True
+            break
+    
+    # Si no se ha encontrado ningún alumno, añado una fila al final del listado
+    if not alumno_encontrado:
+
+       # Si se ha encontrado el alumno en la base de datos, entonces introducimos los datos en el fichero
+        if datos_alumno:
+            nueva_fila = {
+                "Numero Matricula": numero_matricula,
+                "Nombre": datos_alumno.get(COLUMNA_NOMBRE),
+                "Correo": datos_alumno.get(COLUMNA_CORREO)
+            }
+
+        # Si no se ha encontrado el alumno en la base de datos previamente, entonces introducimos los datos en el fichero como "Alumno no encontrado"
+        else:
+            nueva_fila = {
+                "Numero Matricula": numero_matricula,
+                "Nombre": "Alumno no encontrado",
+                "Correo": "Alumno no encontrado"
+            }
+
+        if CONFIG.get("incluir_fecha_entrega"): nueva_fila["Hora Entrega"] = hora_entrega
+        if CONFIG.get("incluir_nota"): nueva_fila["Nota"] = "S/C"
+        if CONFIG.get("incluir_ruta"): nueva_fila["Ruta Examen"] = ruta_pdf
+
+        # Añadimos la nueva fila en la base de datos
+        fichero_completo.append(nueva_fila)
+
+    # Sobreescribo los datos del archivo con los datos del original habiendo añadido los correspondientes
+    try:
+        with open(RUTA_FICHERO_DESTINO, mode='w', newline='', encoding='utf-8-sig') as archivo:
+            escritor = csv.DictWriter(archivo, fieldnames=cabeceras_finales, delimiter=';', extrasaction='ignore')
+            escritor.writeheader() # Escribe las cabeceras (viejas + nuevas)
+            escritor.writerows(fichero_completo) # Escribe todas las filas
+    except PermissionError:
+        messagebox.showerror("Error", "El archivo está abierto en Excel. Ciérralo.")
+    except Exception as e:
+        messagebox.showerror("Error", f"Error inesperado al guardar: {e}")
+    
+# Función para actualizar la base de datos ya existente
+def actualizar_csv(numero_matricula, datos_alumno, ruta_pdf):
+
+    global RUTA_FICHERO_DESTINO, COLUMNA_MATRICULA, COLUMNA_NOMBRE, COLUMNA_CORREO
+
+    # Para guardar la hora de entrega
+    hora_entrega = time.strftime("%d/%m/%Y %H:%M", time.localtime())
+
+    # Compruebo que datos se eligen guardar
+    # Añadimos los nuevos según CONFIG si no estaban ya
+    cabeceras_deseadas = []
     if CONFIG.get("incluir_fecha_entrega"): cabeceras_deseadas.append("Hora Entrega")
     if CONFIG.get("incluir_nota"): cabeceras_deseadas.append("Nota")
     if CONFIG.get("incluir_ruta"): cabeceras_deseadas.append("Ruta Examen")
 
     base_de_datos_completa = []
-    # Para asegurarnos de que exista la lista de cabeceras
-    cabeceras_finales = list(cabeceras_deseadas)   
+    cabeceras_finales = []   
     
     # Si el fichero aún no existe, nos saltamos la parte de leer el existente y vamos directamente a escribir la nueva fila para crear el fichero por primera vez 
     if os.path.exists(RUTA_FICHERO_DESTINO):
@@ -160,33 +299,27 @@ def escribir_csv(numero_matricula, datos_alumno, ruta_pdf):
                 for fila in lector:
                     base_de_datos_completa.append(fila)
 
-                # Leo los encabezados del fichero
+                # Si hay cabezados en el fichero, los guardo en las cabeceras finales
                 if lector.fieldnames:
-
-                    # Leo las cabeceras existentes 
-                    cabeceras_existentes = lector.fieldnames
-
-                    # Guardo las cabeceras en la lista final
-                    for c in cabeceras_existentes:
-                        if c not in cabeceras_finales:
-                            cabeceras_finales.append(c)
-
-                    # Y nos aseguramos de que las "deseadas" estén en la lista final (por si el CSV era viejo)
-                    for c in cabeceras_deseadas:
-                        if c not in cabeceras_finales:
-                            cabeceras_finales.append(c)
+                    cabeceras_finales = list(lector.fieldnames)
 
         except Exception as e:
             print(f"Error leyendo archivo existente: {e}")
-    
+
+    # Si una de las cabeceras deseadas no está en el archivo ya existente, se añaden
+    for c in cabeceras_deseadas:
+        if c not in cabeceras_finales:
+            cabeceras_finales.append(c)
+
     # Busco en alumno en cuestión en el fichero de destino y actualizo la información en la variable
     alumno_encontrado = False
     for fila in base_de_datos_completa:
-        if fila.get("Numero Matricula") == numero_matricula:
 
-            # # Para actualizar el nombre y correo de la persona (NO ESTRICTAMENTE NECESARIO, NO DEBERÍA CAMBIAR)
+        if fila.get(COLUMNA_MATRICULA) == numero_matricula:
+
+            # # Para actualizar el nombre y correo de la persona (NO ESTRICTAMENTE NECESARIO, NO DEBERÍAN CAMBIAR ESTOS DATOS)
             # if datos_alumno:
-            #     fila["Nombre"] = datos_alumno.get("Nombre")
+            #     fila["Nombre"] = datos_alumno.get(COLUMNA_NOMBRE)
             #     fila["Correo"] = datos_alumno.get("Correo")
 
             # Actualizamos solo los campos elegidos por el usuario
@@ -198,22 +331,13 @@ def escribir_csv(numero_matricula, datos_alumno, ruta_pdf):
     
     # Si no se ha encontrado ningún alumno, añado una fila al final del listado
     if not alumno_encontrado:
-
-       # Si se ha encontrado el alumno en la base de datos, entonces introducimos los datos en el fichero
-        if datos_alumno:
-            nueva_fila = {
-                "Numero Matricula": numero_matricula,
-                "Nombre": datos_alumno.get("Nombre"),
-                "Correo": datos_alumno.get("Correo")
-            }
-
-        # Si no se ha encontrado el alumno en la base de datos previamente, entonces introducimos los datos en el fichero como "Alumno no encontrado"
-        else:
-            nueva_fila = {
-                "Numero Matricula": numero_matricula,
-                "Nombre": "Alumno no encontrado",
-                "Correo": "Alumno no encontrado"
-            }
+        
+        # El alumno no estaba en la base de datos original que se está actualizando
+        nueva_fila = {
+            COLUMNA_MATRICULA: numero_matricula,
+            COLUMNA_NOMBRE: "Alumno no encontrado",
+            COLUMNA_CORREO: "Alumno no encontrado"
+        }
 
         if CONFIG.get("incluir_fecha_entrega"): nueva_fila["Hora Entrega"] = hora_entrega
         if CONFIG.get("incluir_nota"): nueva_fila["Nota"] = "S/C"
@@ -222,7 +346,7 @@ def escribir_csv(numero_matricula, datos_alumno, ruta_pdf):
         # Añadimos la nueva fila en la base de datos
         base_de_datos_completa.append(nueva_fila)
 
-    # 4. Sobrescribir el archivo con TODO actualizado
+    # Sobreescribo los datos del archivo con los datos del original habiendo añadido los correspondientes
     try:
         with open(RUTA_FICHERO_DESTINO, mode='w', newline='', encoding='utf-8-sig') as archivo:
             escritor = csv.DictWriter(archivo, fieldnames=cabeceras_finales, delimiter=';', extrasaction='ignore')
@@ -233,16 +357,17 @@ def escribir_csv(numero_matricula, datos_alumno, ruta_pdf):
     except Exception as e:
         messagebox.showerror("Error", f"Error inesperado al guardar: {e}")
 
+    pass
+
 # Función encargadda de enviar el correo
 def mandar_correo(numero_matricula, datos_alumno):
 
     # ----------- CAMBIAR LO DEL SERVER LEYENDO EL FINAL DEL CORREO -----------
 
-    global CORREO_ORIGEN, PASSWORD_ORIGEN, NOMBRE_ASIGNATURA
+    global CORREO_ORIGEN, PASSWORD_ORIGEN, NOMBRE_ASIGNATURA, COLUMNA_NOMBRE, COLUMNA_CORREO
 
     # Leo la parte final del correo (todo lo que esté detrás del @)
-    correo_alumno = datos_alumno["Correo"].lower()
-    tipo_correo = correo_alumno.split('@')[-1]
+    tipo_correo = CORREO_ORIGEN.lower().split('@')[-1]
     
     # Buscamos si el dominio (lo que aparece detrás del @) contiene "hotmail" / "outlook" / "live"
     # Si no aparece, elegimos por defecto el servidor
@@ -253,14 +378,17 @@ def mandar_correo(numero_matricula, datos_alumno):
     
     # Creamos el mensaje a enviar
     asunto = "Entrega de examen confirmada"
-    cuerpo = f"Se confirma mediante el envío de este correo que el alumn@ {datos_alumno["Nombre"]} con matrícula {numero_matricula} ha realizado el examen de {NOMBRE_ASIGNATURA}"
+    cuerpo = f"Se confirma mediante el envío de este correo que el alumn@ {datos_alumno[COLUMNA_NOMBRE]} con matrícula {numero_matricula} ha realizado el examen de {NOMBRE_ASIGNATURA}"
 
     # Crear el objeto del mensaje
     msg = MIMEMultipart()
     msg['From'] = CORREO_ORIGEN
-    msg['To'] = correo_alumno
+    msg['To'] = datos_alumno[COLUMNA_CORREO].lower()
     msg['Subject'] = asunto
     msg.attach(MIMEText(cuerpo, 'plain'))
+
+    # Inicializo el server a None por si hay un error en la carga del servidor
+    server = None
 
     try:
         # Conexión al servidor
@@ -271,7 +399,7 @@ def mandar_correo(numero_matricula, datos_alumno):
         server.login(CORREO_ORIGEN, PASSWORD_ORIGEN)
         
         # Envío del mensaje
-        server.send_message(msg)
+        server.send_message(msg)  
         print("¡Correo enviado con éxito!")
     
     except Exception as e:
@@ -279,7 +407,9 @@ def mandar_correo(numero_matricula, datos_alumno):
     
     # Para asegurarse que se cierra el servidor del correo
     finally:
-        server.quit()
+        # Solo cierro el server si se ha podido abrir para que no de error
+        if server is not None:
+            server.quit()
 
     return
 
@@ -297,15 +427,14 @@ class ProcesadorPDF(FileSystemEventHandler):
         
         # Si es un PDF lo pone en la cola
         if not event.is_directory and event.src_path.lower().endswith(".pdf"):
-            self.cola.put(event.src_path)
-        
+            self.cola.put(event.src_path)   
 
     # Cuando el documento ha sido movido desde otra carpeta
     def on_moved(self, event):
 
         # Si es un PDF lo pone en la cola
-        if not event.is_directory and event.src_path.lower().endswith(".pdf"):
-            self.cola.put(event.src_path)
+        if not event.is_directory and event.dest_path.lower().endswith(".pdf"):     # Eligo event.dest_path porque event.src_path ya no existiría
+            self.cola.put(event.dest_path)
 
 # Clase encargada de la ventana gráfica y del icono mostrado en la barra de tareas
 class AppMonitor:
@@ -336,7 +465,7 @@ class AppMonitor:
         self.email_usuario = tk.StringVar()
         self.password_usuario = tk.StringVar()
         
-
+        # Aquí empezamos a dibujar la interfaz para el selector de opciones
         self.dibujar_interfaz_opciones()
 
     # Función para dibujar la pantalla principal (selector de opciones)
@@ -574,13 +703,14 @@ class AppMonitor:
             messagebox.showwarning("Datos incorrectos", "El listado de alumnos no existe en la ruta especificada.")
             return
 
+        # Para ver si existe la carpeta de destino elegida
         if not self.checkbox_actualizar_fichero.get() and not os.path.isdir(os.path.dirname(self.ruta_fichero_destino.get())):
             messagebox.showwarning("Destino incorrecto", "La carpeta de destino para el fichero de registro no es válida.")
             return
 
-        # MARCA_CAMBIO: LLAMADA A CARGAR_DATOS() PARA PROCESAR EL ARCHIVO ELEGIDO
+        # Cargamos los datos del listado de alumnos
         if not self.cargar_datos_listado():
-            messagebox.showwarning("Error en la carga de datos", "Hubo un error en la carga de datos del listado de alumnos. Por favor, elija otro archivo")
+            # No sacamos un mensaje de warning ya que lo hemos hecho ya en la función cargar_datos_listado()
             return
 
 
@@ -620,7 +750,7 @@ class AppMonitor:
     # Función encargada de cargar los datos del listado en la variable global
     def cargar_datos_listado(self):
 
-        global DICCIONARIO_ALUMNOS
+        global DICCIONARIO_ALUMNOS, COLUMNA_NOMBRE, COLUMNA_MATRICULA, COLUMNA_CORREO
         ruta_listado = self.ruta_listado.get()
         formato_listado = self.texto_desplegable_formato_listado.get()
 
@@ -630,7 +760,10 @@ class AppMonitor:
             if formato_listado == "JSON":
                 with open(ruta_listado, "r", encoding="utf-8-sig") as f:
                     DICCIONARIO_ALUMNOS = json.load(f)
-            
+
+                    # Guardo las cabeceras del primer elemento (asumimos que todas son iguales y se mantienen la norma) en las variables globales
+                    self.guardar_nombres_columnas(DICCIONARIO_ALUMNOS[0].keys())
+
             # Si es de formato CSV
             else:
                 # Si es CSV, lo convertimos a un diccionario para búsqueda rápida por matrícula
@@ -640,12 +773,15 @@ class AppMonitor:
                     # Convierte el excel en un diccionario, usando la primera fila como los nombres de las llaves
                     lector = csv.DictReader(f, delimiter=';')
 
+                    # Guardo las cabeceras del CSV en las variables globales
+                    self.guardar_nombres_columnas(lector.fieldnames)
+
                     # Recorre las filas y las 
                     for fila in lector:
-                        # Buscamos la columna que contenga "Matricula" o similar
-                        id_alumno = fila.get("Numero Matricula") or fila.get("Matricula")
-                        if id_alumno:
-                            DICCIONARIO_ALUMNOS[id_alumno] = fila
+                        # Buscamos la columna que contenga el número de matrícula
+                        num_mat = fila.get(COLUMNA_MATRICULA)
+                        if num_mat:
+                            DICCIONARIO_ALUMNOS[num_mat] = fila
 
             return True
         
@@ -653,23 +789,39 @@ class AppMonitor:
             messagebox.showerror("Error de lectura", f"No se pudo leer el archivo de alumnos:\n{e}")
             return False
 
+    # Función para guardar los nombres de las columnas en variables globales
+    def guardar_nombres_columnas(self, cabeceras):
+
+        global COLUMNA_NOMBRE, COLUMNA_MATRICULA, COLUMNA_CORREO
+
+        # Compruebo como se llama las cabeceras en cuestión y me guardo el nombre
+        for c in cabeceras:
+            
+            # El número de matrícula tiene que tener "matricula" en la cabecera
+            if "matricula" in c.lower():
+                COLUMNA_MATRICULA = c
+
+            # El correo tiene que tener "correo" o "mail" en la cabecera
+            elif "correo" in c.lower() or "mail" in c.lower():
+                COLUMNA_CORREO = c
+
+            # El nombre tiene que tener "nombre" en la cabecera
+            elif "nombre" in c.lower():
+                COLUMNA_NOMBRE = c
+
+
     # Limpiar la ventana y crear la nueva
     def preparar_interfaz_monitoreo(self):
         
         # Limpia todos los botones y textos actuales
         for widget in self.root.winfo_children():
             widget.destroy()
-
-        
         
         # Aquí construimos la ventana "Monitorizando..."
         tk.Label(self.root, text="Monitor Activo", font=("Arial", 12, "bold"), fg="green").pack(pady=10)
         self.status_var = tk.StringVar(value="Esperando archivos...")
         tk.Label(self.root, textvariable=self.status_var, font=("Arial", 10), fg="blue").pack(pady=20) # Texto variable según el estado
         ttk.Button(self.root, text="Detener y Salir", command=self.parar_monitor).pack(pady=10) # Botón para salir del monitoreo
-
-        # Creo un icono en la bandeja de Windows
-        # self.setup_tray()
 
     # Aquí arrancamos el Watchdog y la Cola con las rutas elegidas
     def iniciar_logica_tras_configuracion(self):
@@ -692,20 +844,21 @@ class AppMonitor:
 
     # Esto es para crear un pequeño iccono en la bandeja
     def setup_tray(self):
-        # !!! CREAR UN ICONO SIMPLE (CUADRADO VERDE) !!!
+        # Creamos el icono para la bandeja (cuadrado verde simple)
         img = Image.new('RGB', (64, 64), (255, 255, 255))
         d = ImageDraw.Draw(img)
         d.rectangle((10, 10, 54, 54), fill="green")
         
-        # !!! DEFINIR EL MENÚ DEL ICONO !!!
+        # Aqui se definen las opciones del icono
         menu = Menu(
             MenuItem("Mostrar Interfaz", lambda: self.root.after(0, self.root.deiconify)),  # El "lambda" es para que se ejecute una vez que se cierre, no directamente
             MenuItem("Detener y Salir", self.parar_monitor)
         )
         
+        # Aquí se crea el icono
         self.tray_icon = Icon("GestorExamenes", img, "Gestor de Exámenes", menu)
         
-        # !!! LANZAR EN UN HILO APARTE PARA NO BLOQUEAR TKINTER !!!
+        # Lanzamos un nuevo hilo para no bloquear el tkinter
         threading.Thread(target=self.tray_icon.run, daemon=True).start()
 
     # Este procesador sirve para trabajar PDFs en orden de llegada a través de la cola
@@ -736,16 +889,6 @@ class AppMonitor:
 
 
 if __name__ == "__main__":
-
-    # Cargamos los datos de los alumnos (en este caso de un json)
-    # cargar_datos_json()
-
-    # # Si la carga de la base de datos de alumnos no funciona salta un mensaje de error y termina el programa
-    # if DICCIONARIO_ALUMNOS is None:
-    #     root_temp = tk.Tk()
-    #     root_temp.withdraw()
-    #     messagebox.showerror("Error Crítico", "No se pudo cargar el archivo JSON o no existe.\nEl programa se detendrá.")
-    #     sys.exit(1)
     
     # Lanzamiento del Monitor
     root = tk.Tk()
