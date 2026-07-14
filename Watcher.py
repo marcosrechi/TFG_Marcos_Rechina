@@ -59,18 +59,18 @@ COLUMNA_CORREO = ""
 
 # Contadores de documentos leídos y números de matrícula correctos detectados
 MATRICULAS_DETECTADAS = 0
-DOCUMENTOS_LEIDOS = 0
+DOCUMENTOS_DETECTADOS = 0
 
 # Función encargada de procesar cada nuevo PDF
 def procesar_nuevo_pdf(ruta, callback_status):
 
-    global MATRICULAS_DETECTADAS, DOCUMENTOS_LEIDOS
+    global MATRICULAS_DETECTADAS, DOCUMENTOS_DETECTADOS
 
     # Si el documento detectado es un PDF
     if ruta.lower().endswith(".pdf"):
 
         # Actualizamos el contador de documentos detectados
-        DOCUMENTOS_LEIDOS += 1
+        DOCUMENTOS_DETECTADOS += 1
 
         # Guarda la ruta del PDF
         nombre_archivo = os.path.basename(ruta)
@@ -80,6 +80,16 @@ def procesar_nuevo_pdf(ruta, callback_status):
 
         # Si el archivo no está liberado, no se continua con la función
         if not esperar_liberacion_archivo(ruta):
+            # Guardo el error en un LOG de errores
+            escribir_log_errores(nombre_archivo, ruta, None, True)
+
+            # Actualizo el mensaje de la interfaz para que lo vea el usuario
+            callback_status(f"ERROR: El archivo {nombre_archivo} está bloqueado o en uso. No se pudo procesar.")
+                
+            time.sleep(2)  # Pausa para que el usuario lea el error
+
+            # Modifica el texto para la espera de un nuevo PDF
+            callback_status("Esperando nuevo PDF ...")
             return
         
         try:
@@ -92,7 +102,7 @@ def procesar_nuevo_pdf(ruta, callback_status):
             if "x" in numero_matricula.lower() or "m" in numero_matricula.lower():
 
                 # Guardo el error en un LOG de errores
-                escrbir_log_errores(nombre_archivo, ruta, numero_matricula)
+                escribir_log_errores(nombre_archivo, ruta, numero_matricula)
 
                 # Actualizo el mensaje de la interfaz para que lo vea el usuario
                 callback_status(f"ERROR: Matrícula '{numero_matricula}' no válida en {nombre_archivo}")
@@ -103,7 +113,7 @@ def procesar_nuevo_pdf(ruta, callback_status):
                 # Modifica el texto para la espera de un nuevo PDF
                 callback_status(f"Esperando nuevo PDF ...")
 
-                return None
+                return
 
             # Actualizamos el contador de números de matrícula correctamente detectados
             MATRICULAS_DETECTADAS += 1
@@ -111,8 +121,10 @@ def procesar_nuevo_pdf(ruta, callback_status):
             # Busca el número de matrícula en la base de datos y obtiene los datos del alumno
             callback_status(f"Comprobando informacion del alumno con matrícula {numero_matricula}...")
             datos_alumno = DICCIONARIO_ALUMNOS.get(numero_matricula)
+
             if datos_alumno is None:
-                callback_status(f"Alumno con número de matrícula {numero_matricula} no enontrado")
+                callback_status(f"Alumno con número de matrícula {numero_matricula} no encontrado")
+                time.sleep(2)  # Pausa para que el usuario lea el mensaje
 
             # Si se ha elegido enviar el correo y sse han encontrado los datos del alumno en la lista de alumnos, se envía el correo
             if CONFIG.get("enviar_correo") and datos_alumno:
@@ -124,7 +136,7 @@ def procesar_nuevo_pdf(ruta, callback_status):
             callback_status(f"Actualizando fichero ...")
             # Si se ha elegido actualizar el fichero existente llamo a una función, de lo contrario llamo a otra
             if CONFIG.get("actualizar_fichero"):
-                actualizar_csv(numero_matricula, datos_alumno, ruta)
+                actualizar_csv(numero_matricula, ruta)
             else:
                 escribir_csv_nuevo(numero_matricula, datos_alumno, ruta)
 
@@ -134,11 +146,14 @@ def procesar_nuevo_pdf(ruta, callback_status):
         except Exception as e:
             print(f"[ERROR] {e}")
 
+            # Si algo falla a mitad de proceso, nos aseguramos de que la interfaz no se quede colgada
+            callback_status("Esperando nuevo PDF ...")
+
 # Función encargada de escribir un log de los errores de detección de matrícula (x en el número de matrícula)
-def escrbir_log_errores(nombre_archivo, ruta, numero_matricula):
+def escribir_log_errores(nombre_archivo, ruta, numero_matricula, error_liberacion=False):
 
     # Cojo las variables globales
-    global RUTA_FICHERO_DESTINO, RUTA_LOG_ERRORES
+    global RUTA_LOG_ERRORES
 
     # Si aún no se ha guardado la ruta del LOG, lo guardo ahora
     if RUTA_LOG_ERRORES is None:
@@ -152,18 +167,42 @@ def escrbir_log_errores(nombre_archivo, ruta, numero_matricula):
 
         # Guardo la ruta del archivo para el log de errores
         RUTA_LOG_ERRORES = os.path.join(carpeta_log, "LOG_ERR_DETECCION_MATRICULA.txt")
-    
+
     # Guardo la hora del error
     hora_error = time.strftime("%d/%m/%Y %H:%M:%S")
 
-    # Escribo tanto la hora del error, el nombre del archivo, la ruta completa de este y el numero de matrícula leído. Dejo después espacio para el posible siguiente error
-    with open(RUTA_LOG_ERRORES, "a", encoding="utf-8") as log_file:
-        log_file.write(f"[{hora_error}] ERROR DE DETECCIÓN\n")
-        log_file.write(f"Archivo: {nombre_archivo}\n")
-        log_file.write(f"Ruta completa: {ruta}\n")
-        log_file.write(f"Matrícula fallida: {numero_matricula}\n")
-        log_file.write(f"\"X\" en la matrícula: cifra no detectada - \"M\" en la matrícula: Más de una casilla marcada para la misma cifra \n")
-        log_file.write("-" * 60 + "\n\n")
+    # Compruebo si el archivo de log ya existe o no
+    es_nuevo = not os.path.exists(RUTA_LOG_ERRORES)
+
+    try:
+        # Si el archivo no existe, lo creo y escribo la cabecera y la leyenda de los errores
+        with open(RUTA_LOG_ERRORES, "a", encoding="utf-8") as log_file:
+            if es_nuevo:
+                log_file.write("LOG DE ERRORES DE DETECCIÓN DE MATRÍCULA\n")
+                log_file.write("-" * 60 + "\n\n")
+                log_file.write("Este archivo registra los errores de detección de matrícula.\n")
+                log_file.write("Se produce un error cuando el número de matrícula contiene 'X' o 'M'.\n")
+                log_file.write("'X' en la matrícula: cifra no detectada.\n")
+                log_file.write("'M' en la matrícula: Más de una casilla marcada para la misma cifra.\n")
+                log_file.write("-" * 60 + "\n\n")
+
+            # Escribo tanto la hora del error, el nombre del archivo, la ruta completa de este y el numero de matrícula leído (si es que se pudo abrir).
+            #  Dejo después espacio para el posible siguiente error
+            if error_liberacion:
+                log_file.write(f"[{hora_error}] ERROR DE LIBERACIÓN DE ARCHIVO\n")
+                log_file.write(f"Archivo: {nombre_archivo}\n")
+                log_file.write(f"Ruta completa: {ruta}\n")
+                log_file.write("El archivo estaba bloqueado o en uso y no se pudo procesar.\n")
+                log_file.write("-" * 60 + "\n\n")
+            else:
+                log_file.write(f"[{hora_error}] ERROR DE DETECCIÓN\n")
+                log_file.write(f"Archivo: {nombre_archivo}\n")
+                log_file.write(f"Ruta completa: {ruta}\n")
+                log_file.write(f"Matrícula fallida: {numero_matricula}\n")
+                log_file.write("-" * 60 + "\n\n")
+    
+    except Exception as e:
+        print(f"No se pudo escribir en el archivo de log: {e}")
 
 # Detecta si el archivo está en uso o está liberado
 def esperar_liberacion_archivo(ruta, intentos=20, delay=1):
@@ -178,20 +217,18 @@ def esperar_liberacion_archivo(ruta, intentos=20, delay=1):
             return True
         
         # El archivo está bloqueado o siendo escrito
-        except IOError:
+        except PermissionError:
             # Esperamos un tiempo antes del siguiente intento
             time.sleep(delay)
     
-    # Si podemos abrirlo en 'append', significa que está liberado - DEVOLVEMOS UN FALSE
+    # Si no podemos abrirlo en 'append', significa que no está liberado - DEVOLVEMOS UN FALSE
     return False
 
 # Función para escribir el nuevo fichero
 def escribir_csv_nuevo(numero_matricula, datos_alumno, ruta_pdf):
 
-    global RUTA_FICHERO_DESTINO, COLUMNA_MATRICULA, COLUMNA_NOMBRE, COLUMNA_CORREO
-
     # Para guardar la hora de entrega
-    hora_entrega = time.strftime("%d/%m/%Y %H:%M", time.localtime())
+    hora_entrega = time.strftime("%d/%m/%Y %H:%M:%S", time.localtime())
 
     # Compruebo que datos se eligen guardar
     # Añadimos los nuevos según CONFIG si no estaban ya
@@ -240,22 +277,13 @@ def escribir_csv_nuevo(numero_matricula, datos_alumno, ruta_pdf):
     
     # Si no se ha encontrado ningún alumno, añado una fila al final del listado
     if not alumno_encontrado:
-
-       # Si se ha encontrado el alumno en la base de datos, entonces introducimos los datos en el fichero
-        if datos_alumno:
-            nueva_fila = {
-                "Numero Matricula": numero_matricula,
-                "Nombre": datos_alumno.get(COLUMNA_NOMBRE),
-                "Correo": datos_alumno.get(COLUMNA_CORREO)
-            }
-
-        # Si no se ha encontrado el alumno en la base de datos previamente, entonces introducimos los datos en el fichero como "Alumno no encontrado"
-        else:
-            nueva_fila = {
-                "Numero Matricula": numero_matricula,
-                "Nombre": "Alumno no encontrado",
-                "Correo": "Alumno no encontrado"
-            }
+        
+        nueva_fila = {
+            "Numero Matricula": numero_matricula,
+            # si datos_alumno es None, entonces se pone "Alumno no encontrado" en la columna Nombre y Correo
+            "Nombre": (datos_alumno or {}).get(COLUMNA_NOMBRE, "Alumno no encontrado"),
+            "Correo": (datos_alumno or {}).get(COLUMNA_CORREO, "Alumno no encontrado")
+        }
 
         if CONFIG.get("incluir_fecha_entrega"): nueva_fila["Hora Entrega"] = hora_entrega
         if CONFIG.get("incluir_nota"): nueva_fila["Nota"] = "S/C"
@@ -276,12 +304,10 @@ def escribir_csv_nuevo(numero_matricula, datos_alumno, ruta_pdf):
         messagebox.showerror("Error", f"Error inesperado al guardar: {e}")
     
 # Función para actualizar la base de datos ya existente
-def actualizar_csv(numero_matricula, datos_alumno, ruta_pdf):
-
-    global RUTA_FICHERO_DESTINO, COLUMNA_MATRICULA, COLUMNA_NOMBRE, COLUMNA_CORREO
+def actualizar_csv(numero_matricula, ruta_pdf):
 
     # Para guardar la hora de entrega
-    hora_entrega = time.strftime("%d/%m/%Y %H:%M", time.localtime())
+    hora_entrega = time.strftime("%d/%m/%Y %H:%M:%S", time.localtime())
 
     # Compruebo que datos se eligen guardar
     # Añadimos los nuevos según CONFIG si no estaban ya
@@ -292,28 +318,29 @@ def actualizar_csv(numero_matricula, datos_alumno, ruta_pdf):
 
     base_de_datos_completa = []
     cabeceras_finales = []   
+
+    # Leo el fichero y guardo todos los datos
+    try:
+        # Abrimos el fichero y vemos si estánlas cabeceras deseadas
+        with open(RUTA_FICHERO_DESTINO, mode='r', encoding='utf-8-sig') as f:
+
+            # Guardo todos los datos de la base de datos
+            lector = csv.DictReader(f, delimiter=';')
+
+            # Guardo uno a uno los datos de cada fila en la variable
+            for fila in lector:
+                base_de_datos_completa.append(fila)
+
+            # Si hay cabezados en el fichero, los guardo en las cabeceras finales
+            if lector.fieldnames:
+                cabeceras_finales = list(lector.fieldnames)
+
+    except Exception as e:
+        print(f"Error leyendo archivo existente: {e}")
     
-    # Si el fichero aún no existe, nos saltamos la parte de leer el existente y vamos directamente a escribir la nueva fila para crear el fichero por primera vez 
-    if os.path.exists(RUTA_FICHERO_DESTINO):
-
-        # Leo el fichero y guardo todos los datos
-        try:
-            # Abrimos el fichero y vemos si estánlas cabeceras deseadas
-            with open(RUTA_FICHERO_DESTINO, mode='r', encoding='utf-8-sig') as f:
-
-                # Guardo todos los datos de la base de datos
-                lector = csv.DictReader(f, delimiter=';')
-
-                # Guardo uno a uno los datos de cada fila en la variable
-                for fila in lector:
-                    base_de_datos_completa.append(fila)
-
-                # Si hay cabezados en el fichero, los guardo en las cabeceras finales
-                if lector.fieldnames:
-                    cabeceras_finales = list(lector.fieldnames)
-
-        except Exception as e:
-            print(f"Error leyendo archivo existente: {e}")
+    # Si por lo que sea no hay cabeceras en el ficShero, las incluyo para que no de error más adelante
+    if not cabeceras_finales:
+        cabeceras_finales = [COLUMNA_MATRICULA, COLUMNA_NOMBRE, COLUMNA_CORREO]
 
     # Si una de las cabeceras deseadas no está en el archivo ya existente, se añaden
     for c in cabeceras_deseadas:
@@ -366,14 +393,8 @@ def actualizar_csv(numero_matricula, datos_alumno, ruta_pdf):
     except Exception as e:
         messagebox.showerror("Error", f"Error inesperado al guardar: {e}")
 
-    pass
-
 # Función encargadda de enviar el correo
 def mandar_correo(numero_matricula, datos_alumno):
-
-    # ----------- CAMBIAR LO DEL SERVER LEYENDO EL FINAL DEL CORREO -----------
-
-    global CORREO_ORIGEN, PASSWORD_ORIGEN, NOMBRE_ASIGNATURA, COLUMNA_NOMBRE, COLUMNA_CORREO
 
     # Leo la parte final del correo (todo lo que esté detrás del @)
     tipo_correo = CORREO_ORIGEN.lower().split('@')[-1]
@@ -408,8 +429,7 @@ def mandar_correo(numero_matricula, datos_alumno):
         server.login(CORREO_ORIGEN, PASSWORD_ORIGEN)
         
         # Envío del mensaje
-        server.send_message(msg)  
-        print("¡Correo enviado con éxito!")
+        server.send_message(msg)
     
     except Exception as e:
         print(f"ERROR: {e}")
@@ -419,8 +439,6 @@ def mandar_correo(numero_matricula, datos_alumno):
         # Solo cierro el server si se ha podido abrir para que no de error
         if server is not None:
             server.quit()
-
-    return
 
 # Clase encargada de la detección de nuevos documentos
 class ProcesadorPDF(FileSystemEventHandler):
@@ -522,7 +540,7 @@ class AppMonitor:
         # -------------------- SECCIÓN CARPETA A MONITOREAR --------------------
 
         # Creando el frame para las rutas
-        self.frame_monitoreo = tk.LabelFrame(self.root, text="Monitoreo de Archivos", padx=10, pady=10)
+        self.frame_monitoreo = tk.LabelFrame(self.root, text="Monitorización de Archivos", padx=10, pady=10)
         self.frame_monitoreo.pack(fill="x", padx=20, pady=5)
 
         # Carpeta Monitoreo
@@ -583,7 +601,7 @@ class AppMonitor:
         
 
         # ---------- BOTÓN PARA INICIAR EL MONITOREO ----------
-        tk.Button(self.root, text="INICIAR MONITOREO", bg="#4CAF50", fg="white", font=("Arial", 12, "bold"), command=self.validar_e_iniciar).pack(pady=20)
+        tk.Button(self.root, text="INICIAR MONITORIZACIÓN", bg="#4CAF50", fg="white", font=("Arial", 12, "bold"), command=self.validar_e_iniciar).pack(pady=20)
 
         self.comprobar_formato_listado()
 
@@ -700,6 +718,16 @@ class AppMonitor:
         # Si no ha escrito ninguna asignatura
         if not self.asignatura.get().strip():
             messagebox.showwarning("Datos incorrectos", "No se ha introducido ninguna asignatura")
+            return
+        
+        # Si no ha escrito ningun correo personalizado y ha elegido utilizar un correo personalizado
+        if self.checkbox_usar_correo_personalizado.get() and not self.email_usuario.get().strip():
+            messagebox.showwarning("Datos incorrectos", "No se ha introducido ningún correo personalizado.")
+            return
+        
+        # Si no ha escrito ningúna clave de aplicación y ha elegido utilizar un correo personalizado
+        if self.checkbox_usar_correo_personalizado.get() and not self.password_usuario.get().strip():
+            messagebox.showwarning("Datos incorrectos", "No se ha introducido ninguna clave de aplicación.")
             return
 
         # Si no existe la ruta de la carpeta
@@ -874,6 +902,14 @@ class AppMonitor:
     
         while True:
             ruta_pdf = self.cola.get() # Se bloquea aquí hasta que llegue un PDF
+
+            # Comprobamos si la ruta corresponde a la señal de parada establecida
+            if ruta_pdf is None:
+
+                # Si corresponde, marcamos la tarea como hecha y salimos del bucle
+                self.cola.task_done()
+                break
+
             procesar_nuevo_pdf(ruta_pdf, self.actualizar_ventana) # Procesa ese nuevo PDF
             self.cola.task_done() # Elimina ese PDF de la cola
     
@@ -885,23 +921,51 @@ class AppMonitor:
     # La función que finaliza el Monitor
     def parar_monitor(self):
 
-        global MATRICULAS_DETECTADAS, DOCUMENTOS_LEIDOS
+        # Actualizar mensaje en la ventana para informar al usuario
+        self.actualizar_ventana("Vaciando cola y deteniendo monitorización... Por favor, espere unos segundos.")
+
+        # Paro el observador para que no entren nuevos documentos a la cola
+        try:
+            # Para el observador
+            self.observer.stop()
+        except:
+            pass
+
+        # Creamos un nuevo hilo para vaciar la cola y cerrar el programa, para que no se quede bloqueada la interfaz gráfica
+        threading.Thread(target=self.esperar_cola, daemon=True).start()
+    
+    # Función que espera a que la cola se vacíe y luego cierra el programa
+    def esperar_cola(self):
+
+        # Señal para que el hilo de la cola termine
+        self.cola.put(None)
+
+        # Espera a que todas las tareas en la cola se hayan completado
+        self.cola.join()
+
+        # Actualizar mensaje en la ventana para informar al usuario
+        self.actualizar_ventana("Cola vaciada. Cerrando interfaz...")
+
+        # Llama a la función encargada de cerrar la interfaz en el hilo principal
+        self.root.after(0, self.cerrar_interfaz)
+    
+    # Función que cierra la interfaz y muestra el resumen del monitoreo
+    def cerrar_interfaz(self):
+
+        global MATRICULAS_DETECTADAS, DOCUMENTOS_DETECTADOS
 
         # Pruebo a eliminar el icono de la bandeja (si es que existe)
         try:
             self.tray_icon.stop()
         except:
             pass
-        
-        # Para el observador
-        self.observer.stop()
 
         # Mostramos la ventana emergente con el resumen del monitoreo
         messagebox.showinfo(
-            "Resumen de Monitoreo", 
-            f"El monitor se ha detenido con éxito.\n\n"
+            "Resumen de Monitorización", 
+            f"El monitor se ha detenido con éxito tras procesar la cola.\n\n"
             f"Números de matrícula leídos correctamente: {MATRICULAS_DETECTADAS}\n"
-            f"Documentos totales leídos: {DOCUMENTOS_LEIDOS}"
+            f"Documentos PDF totales detectados: {DOCUMENTOS_DETECTADOS}"
         )
 
         # Para el propio Monitor
