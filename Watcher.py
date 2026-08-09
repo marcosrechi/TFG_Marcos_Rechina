@@ -34,7 +34,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 # El script encargado de obtener el numero de matrícula del PDF
-from CasillasMarcadas import Extraer_Numero_Matricula # type: ignore
+from CasillasMarcadas import extraer_numero_matricula # type: ignore
 
 # Variable para guardar la configuración elegida por el usuario
 CONFIG = {}
@@ -96,7 +96,7 @@ def procesar_nuevo_pdf(ruta, callback_status):
             callback_status(f"Leyendo número de matrícula {nombre_archivo}...")
 
             # Se obtiene el número de matrícula con la función del otro script
-            numero_matricula = Extraer_Numero_Matricula(ruta)
+            numero_matricula = extraer_numero_matricula(ruta)
 
             # Comprueba que el número de matrícula sea válildo
             if "x" in numero_matricula.lower() or "m" in numero_matricula.lower():
@@ -519,7 +519,7 @@ class AppMonitor:
 
         # Frame para el "Correo Personalizado"
         self.frame_correo_personalizado = tk.Frame(self.frame_correo)
-        tk.Checkbutton(self.frame_correo_personalizado, text="Usar su propio personalizado", variable=self.checkbox_usar_correo_personalizado, command=self.habilitar_credenciales_correo).pack(anchor="w", padx=20)
+        tk.Checkbutton(self.frame_correo_personalizado, text="Usar dirección de correo personalizado", variable=self.checkbox_usar_correo_personalizado, command=self.habilitar_credenciales_correo).pack(anchor="w", padx=20)
         
         # Frame para la entrada de correo y clave
         self.frame_credenciales = tk.Frame(self.frame_correo_personalizado)
@@ -551,7 +551,7 @@ class AppMonitor:
 
         # -------------------- SECCIÓN CONFIGURACIÓN FICHERO --------------------
 
-        self.frame_config_fichero = tk.LabelFrame(self.root, text="Configuración del Listado de Alumnos/Fichero", padx=10, pady=10)
+        self.frame_config_fichero = tk.LabelFrame(self.root, text="Configuración del Listado de Alumnos / Fichero de entrada", padx=10, pady=10)
         self.frame_config_fichero.pack(fill="x", padx=20, pady=5)
 
 
@@ -564,7 +564,7 @@ class AppMonitor:
         self.desplegable_formato_listado.pack(side="left", padx=10)
 
         # También elijo si se actualiza el listado ya existente
-        self.checkbutton_actualizar_fichero = tk.Checkbutton(frame_tipo_listado, text="Actualizar información en el listado existente", variable=self.checkbox_actualizar_fichero, command=self.habilitar_csv_destino)
+        self.checkbutton_actualizar_fichero = tk.Checkbutton(frame_tipo_listado, text="Actualizar información en el listado de entrada", variable=self.checkbox_actualizar_fichero, command=self.habilitar_csv_destino)
         self.checkbutton_actualizar_fichero.pack(side="left", padx=20)
 
         self.desplegable_formato_listado.bind("<<ComboboxSelected>>", self.comprobar_formato_listado) # Este .bind sirve para llamar a la función cada vez que se cambia la opción
@@ -592,7 +592,7 @@ class AppMonitor:
 
 
         # ---------- SECCIÓN DATOS DEL FICHERO ----------
-        frame_datos_fichero = tk.LabelFrame(self.root, text="Datos a añadir en el fichero", padx=10, pady=10)
+        frame_datos_fichero = tk.LabelFrame(self.root, text="Datos a añadir en el fichero de salida", padx=10, pady=10)
         frame_datos_fichero.pack(fill="x", padx=20, pady=5)
         
         tk.Checkbutton(frame_datos_fichero, text="Incluir columna de Nota", variable=self.checkbox_incluir_nota).pack(anchor="w")

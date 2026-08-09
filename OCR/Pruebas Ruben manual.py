@@ -50,12 +50,21 @@ def Extraer_ROI_Iamgen(Imagen, Coordenadas):
 url = "https://github.com/R4F405/Reconocimiento-de-Digitos-MNIST/raw/main/modelo_mnist.keras"
 model_filename = "modelo_mnist.keras"
 # ruta_imagen = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas\roi_extraida8.png"
-RutaPDF7Seg = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\test 7seg Epson_19092025163133 pag1.pdf"
-RutaPDFNormal = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Epson_12112025210213 8_Censurado.pdf"
-# RutaPDFNormal = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Epson_12112025210213 8_Censurado.pdf"
-# RutaImagenDestino = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas"
-RutaImagenDestino = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas"
-numero_esperado = [5, 6, 8, 5, 9]
+RutaPDF7Seg = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Numero_7_Segmentos\test 7seg Epson_19092025163133 pag1.pdf"
+# RutaPDFNormal = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Numero_A_Mano\Epson_12112025210213 8_Censurado.pdf"
+
+# RutaPDFNormal = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Numero_A_Mano\Epson_12112025210213 2_Censurado.pdf"
+RutaPDFNormal = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Numero_A_Mano\Epson_12112025210213 8_Censurado.pdf"
+# RutaPDFNormal = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Numero_A_Mano\Epson_12112025210213 38_Censurado.pdf"
+
+RutaImagenDestino = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas"
+# RutaImagenDestino = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas"
+
+
+
+# numero_esperado = [5, 6, 1, 0, 0]           # Para 2
+numero_esperado = [5, 6, 8, 5, 9]           # Para 8
+# numero_esperado = [5, 7, 7, 1, 5]           # Para 38
 
 custom_config = r'--psm 10 --oem 3 -c tessedit_char_whitelist=0123456789'
 
@@ -119,7 +128,7 @@ Imagen = Cargar_Paginas_PDF(RutaPDFNormal)
 #     DimensionesROI(x = 529, y = 49, ancho = 12, alto = 18)
 # ]
 
-
+# Para 8
 CoordenadasROI = [
     DimensionesROI(x = 485, y = 51, ancho = 10, alto = 15), # x, y, ancho, alto
     DimensionesROI(x = 496, y = 51, ancho = 10, alto = 15),
@@ -127,6 +136,15 @@ CoordenadasROI = [
     DimensionesROI(x = 519, y = 51, ancho = 10, alto = 15),
     DimensionesROI(x = 530, y = 51, ancho = 10, alto = 15)
 ]
+
+# Para 38
+# CoordenadasROI = [
+#     DimensionesROI(x = 483, y = 51, ancho = 10, alto = 14), # x, y, ancho, alto
+#     DimensionesROI(x = 494, y = 51, ancho = 10, alto = 14),
+#     DimensionesROI(x = 506, y = 51, ancho = 9, alto = 14),
+#     DimensionesROI(x = 517, y = 51, ancho = 10, alto = 14),
+#     DimensionesROI(x = 528, y = 51, ancho = 10, alto = 14)
+# ]
 
 
 
@@ -248,18 +266,17 @@ for i, (Coordenada, cifra_esperada) in enumerate(zip(CoordenadasROI, numero_espe
     cv2.imwrite(nombre_archivo, Zona7segmentos)
 
     # Usamos la nueva función de preprocesamiento
-    # imagen_entrada, imagen_debug = preprocesar_para_mnist(Zona7segmentos)
-    imagen_entrada = preprocesar_para_tesseract(Zona7segmentos)
+    imagen_entrada, imagen_debug = preprocesar_para_mnist(Zona7segmentos)
+    # imagen_entrada = preprocesar_para_tesseract(Zona7segmentos)
+    # imagen_entrada_inv = cv2.bitwise_not(imagen_entrada)
+    
+    # Tesseract    # texto = pytesseract.image_to_string(imagen_entrada, config=custom_config)
+    # texto = pytesseract.image_to_string(imagen_entrada_inv, config=custom_config)
+    # numero_predicho = texto.strip()
 
-    # Predicción
-    # prediccion = modelo.predict(imagen_entrada, verbose=0) # verbose=0 quita el log de keras
-
-    # prediccion = pytesseract.image_to_string(imagen_entrada, config=custom_config)
-    # numero_predicho = np.argmax(prediccion)
-    # confianza = np.max(prediccion) * 100
-
-    texto = pytesseract.image_to_string(imagen_entrada, config=custom_config)
-    numero_predicho = texto.strip()
+    # Modelo MNIST
+    prediccion = modelo.predict(imagen_entrada, verbose=0) # verbose=0 quita el log de keras
+    numero_predicho = np.argmax(prediccion)
 
     print(f"--- Cifra {i+1} ---")
     print(f"Real: {cifra_esperada} | Predicho: {numero_predicho}")
@@ -270,110 +287,21 @@ for i, (Coordenada, cifra_esperada) in enumerate(zip(CoordenadasROI, numero_espe
     # Guardamos la imagen cuadrada de 28x28 (des-normalizada para verla bien)
     # cv2.imwrite(nombre_archivo, (imagen_entrada.reshape(28,28) * 255).astype(np.uint8))
     nombre_archivo = rf"{RutaImagenDestino}\Cifra_{i+1}_Esperado_{cifra_esperada}_Obtenido_{numero_predicho}_Tesseract.png"
-    cv2.imwrite(nombre_archivo, imagen_entrada)
-
+    # cv2.imwrite(nombre_archivo, imagen_entrada)
+    # cv2.imwrite(nombre_archivo, imagen_entrada_inv)
+    
+    # Gaurdamos exactamente la imagen que devuelve la función de preprocesamiento para MNIST (imagen_final, exactamente la que se le pasa al modelo)
+    cv2.imwrite(nombre_archivo, (imagen_entrada.reshape(28,28) * 255).astype(np.uint8))
 
     
-    if cifra_esperada != numero_predicho:
+
+
+    # cv2.imwrite(nombre_archivo, (imagen_entrada.reshape(28,28) * 255).astype(np.uint8))
+
+    
+    if str(cifra_esperada) != numero_predicho and cifra_esperada != numero_predicho:
         print("⚠️ FALLO DETECTADO")
 
 
 
-
-
-
-
-# for Coordenada, cifra_esperada in zip(CoordenadasROI, numero_esperado):
-
-#     Zona7segmentos = Extraer_ROI_Iamgen(Imagen, Coordenada)
-
-#     if Zona7segmentos is None:
-#         print("¡ERROR! No se encontró la imagen. Revisa la ruta.")
-#         # Aquí deberías detener el programa en un caso real
-    
-#     else:
-
-#         print(f"Cifra numero {iteracion}")
-
-#         Zona7segmentos_gris = cv2.cvtColor(Zona7segmentos, cv2.COLOR_BGR2GRAY)
-
-#         imagen_28x28 = cv2.resize(Zona7segmentos_gris, (28, 28), interpolation=cv2.INTER_AREA)
-#         # print(f"Imagen redimensionada")
-
-#         # --- PASO CRÍTICO: INVERSIÓN DE COLORES ---
-#         # El dataset MNIST (con el que se entrenó el modelo) son números BLANCOS sobre fondo NEGRO.
-#         # Un escaneo de papel es un número NEGRO sobre fondo BLANCO.
-#         # ¡Tenemos que invertir los colores o el modelo fallará!
-#         imagen_invertida = cv2.bitwise_not(imagen_28x28)
-#         # print(f"Inversión de colores completado")
-
-#         # nombre_archivo_guardado = rf"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas\NUMERO_A_LEER_{iteracion}.png"
-#         nombre_archivo_guardado = rf"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas\NUMERO_A_LEER_{iteracion}.png"
-#         iteracion += 1
-
-#         # print(f"Imagen guardada como: {nombre_archivo_guardado}")
-
-#         # Preprocesar la imagen (normalización y reshape)
-#         imagen_normalizada = imagen_invertida / 255.0
-#         imagen_entrada = imagen_normalizada.reshape(1, 28, 28, 1)
-
-#         cv2.imwrite(nombre_archivo_guardado, imagen_invertida)
-
-#         # Paso 4: Realizar la predicción
-#         prediccion = modelo.predict(imagen_entrada)
-#         numero_predicho = np.argmax(prediccion)
-
-
-#         print(f"Etiqueta real: {cifra_esperada}")
-#         print(f"Número predicho por el modelo: {numero_predicho}\n")
-
-
-
-# Zona7segmentos = Extraer_ROI_Iamgen(Imagen, CoordenadasROI[iteracion])
-
-# # Verificación de seguridad
-# if Zona7segmentos is None:
-#     print("¡ERROR! No se encontró la imagen. Revisa la ruta.")
-#     # Aquí deberías detener el programa en un caso real
-# else:
-
-#     for Coordenada, cifra in CoordenadasROI, numero_esperado:
-
-#         Zona7segmentos = Extraer_ROI_Iamgen(Imagen, Coordenada)
-
-#     # print(f"Imagen cargada. Tamaño original: {Zona7segmentos.shape}")
-
-#     # 3. Redimensionar a 28x28 (Obligatorio)
-#     # Esto fuerza la imagen a 28x28 píxeles, sin importar cómo era antes.
-#     # 'interpolation=cv2.INTER_AREA' es bueno para reducir tamaños sin perder detalle.
-
-#     Zona7segmentos_gris = cv2.cvtColor(Zona7segmentos, cv2.COLOR_BGR2GRAY)
-
-#     imagen_28x28 = cv2.resize(Zona7segmentos_gris, (28, 28), interpolation=cv2.INTER_AREA)
-#     print(f"Imagen redimensionada")
-
-#     # --- PASO CRÍTICO: INVERSIÓN DE COLORES ---
-#     # El dataset MNIST (con el que se entrenó el modelo) son números BLANCOS sobre fondo NEGRO.
-#     # Un escaneo de papel es un número NEGRO sobre fondo BLANCO.
-#     # ¡Tenemos que invertir los colores o el modelo fallará!
-#     imagen_invertida = cv2.bitwise_not(imagen_28x28)
-#     print(f"Inversión de colores completado")
-
-#     nombre_archivo_guardado = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas\NUMEROALEER.png"
-    
-#     print(f"Imagen guardada como: {nombre_archivo_guardado}")
-
-#     # Preprocesar la imagen (normalización y reshape)
-#     imagen_normalizada = imagen_invertida / 255.0
-#     imagen_entrada = imagen_normalizada.reshape(1, 28, 28, 1)
-
-#     cv2.imwrite(nombre_archivo_guardado, imagen_invertida)
-
-#     # Paso 4: Realizar la predicción
-#     prediccion = modelo.predict(imagen_entrada)
-#     numero_predicho = np.argmax(prediccion)
-
-
-# print(f"Etiqueta real: {numero_esperado[iteracion]}")
-# print(f"Número predicho por el modelo: {numero_predicho}")
 

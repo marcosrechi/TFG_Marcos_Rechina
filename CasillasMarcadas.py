@@ -1,10 +1,18 @@
+# Para la lectura y rasterización de páginas de documentos PDF
 import fitz # Para abrirlo simplemente no necesitas fitz, pero si quieres coger las imagenes y trabajar con ellas etc etc si te hace falta 
+
+# Para el procesamiento de imágenes y operaciones de visión artificial
 import cv2
+
+# Para el manejo de matrices, arrays multidimensionales y cálculo de densidad
 import numpy as np
+
+# Para la gestión de rutas y verificación en el sistema de archivos
 import os
 
+
 # Establecemos una clase para las dimensiones / coordenadas del recorte 
-class Dimensiones_ROI:
+class DimensionesROI:
     def __init__(self, x, y, ancho, alto):
         self.x = x
         self.y = y
@@ -12,18 +20,22 @@ class Dimensiones_ROI:
         self.alto = alto
 
 # Función que se llama desde el otro script para realizar el proceso de extracción de matrícula
-def Extraer_Numero_Matricula(ruta_pdf):
+def extraer_numero_matricula(ruta_pdf):
 
     # Aqui cargo la primera página del PDF como imagen 
-    imagen = Cargar_Paginas_PDF(ruta_pdf)
+    imagen = cargar_paginas_pdf(ruta_pdf)
+
+    # Si hubo un error al cargar la imagen, devuelvo un string "XXXXXX" (que es lo que espera el módulo principal en caso de error)
+    if imagen is None:
+        return "XXXXXX"
 
     # Estas son las coordenadas del PDF original donde se encuentra la cuadrícula (con un margen alto por si en el escaneo no se encuentra siempre exactamente en el mismo lugar)
-    coordenadas_base = Dimensiones_ROI(x = 387, y = 135, ancho = 110, alto = 170)
+    coordenadas_base = DimensionesROI(x = 387, y = 135, ancho = 110, alto = 170)
 
     # Aqui lo escalamos para ajustar las coordenadas al pixmap
     dpi = 150
     factor_escala = dpi / 72.0
-    coordenadas_roi = Dimensiones_ROI(
+    coordenadas_roi = DimensionesROI(
         x=int(coordenadas_base.x * factor_escala),
         y=int(coordenadas_base.y * factor_escala),
         ancho=int(coordenadas_base.ancho * factor_escala),
@@ -31,25 +43,29 @@ def Extraer_Numero_Matricula(ruta_pdf):
     )
 
     # Aquí recorto de la primera página solo la zona donde se encuentra la cuadrícula
-    recorte = Extraer_ROI_Imagen(imagen, coordenadas_roi)
+    recorte = extraer_roi_imagen(imagen, coordenadas_roi)
+
+    # Si hubo un error al recortar la imagen, devuelvo un string "XXXXXX" (que es lo que espera el módulo principal en caso de error)
+    if recorte is None or recorte.size == 0:
+        return "XXXXXX"
 
     # Aquí proceso la imagen para poder reconocer que casillas son las que están marcadas
-    _, _, recorte_final = Procesar_Imagen(recorte)
+    _, _, recorte_final = procesar_imagen(recorte)
 
     # Aquí mando el recorte ya procesado para detectar que casillas están marcadas
-    numero_matricula = Detectar_Resultado_OMR(recorte_final)
+    numero_matricula = detectar_resultado_omr(recorte_final)
 
     # Devuelvo el número de matrícula (como una variable tipo str, no un entero)
     return numero_matricula
 
 # Esta función se encarga de guardar la primera página del PDF que le des en una variable cv2
-def Cargar_Paginas_PDF(RutaPDF, dpi = 150):
+def cargar_paginas_pdf(rutapdf, dpi = 150):
 
     # Inicializo la variable
     imagen_cv2 = None
 
     try:
-        with fitz.open(RutaPDF) as doc:
+        with fitz.open(rutapdf) as doc:
             
             # Escogemos la primera página del pdf (donde estaría la cuadrícula)
             pagina = doc[0]
@@ -81,14 +97,14 @@ def Cargar_Paginas_PDF(RutaPDF, dpi = 150):
     return imagen_cv2
 
 # Esta función simplemente recorta una imagen con unas coordenadas dadas
-def Extraer_ROI_Imagen(imagen, coordenadas):
+def extraer_roi_imagen(imagen, coordenadas):
 
     recorte = imagen[coordenadas.y : coordenadas.y + coordenadas.alto, coordenadas.x : coordenadas.x + coordenadas.ancho]
 
     return recorte
 
 # Esta función se encarga de procesar la imagen para poder reconocer que casillas están marcadas
-def Procesar_Imagen(imagen):
+def procesar_imagen(imagen):
     
     # Transformamos la imagen a escala de grises para trabajar más fácil con ella (el color en este caso no nos importa)
     imagen_grises = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
@@ -110,12 +126,12 @@ def Procesar_Imagen(imagen):
     imagen_umbral = cv2.threshold(imagen_sin_ruido, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
 
     # Esta función se encarga de eliminar las lineas horizontales que tienen los exámenes por norma debajo de la primera fila
-    imagen_umbral_sin_linea = Eliminar_Linea_Horizontales(imagen_umbral)
+    imagen_umbral_sin_linea = eliminar_linea_horizontal(imagen_umbral)
     
     return imagen, imagen_umbral, imagen_umbral_sin_linea
 
 # Esta función se encarga de eliminar la línea que se encuentra debajo de la primera fila de cajas
-def Eliminar_Linea_Horizontales(imagen_umbral):
+def eliminar_linea_horizontal(imagen_umbral):
 
     # Primero creamos un elemento que sea una fina línea horizontal
     # Este es el ancho de la línea elegido (ya que el tamaño mínimo de la caja la establecemos en 10 (más adelante), el ancho lo ponemos en más del doble para que no detecte cajas, solo la línea en cuestión)
@@ -149,7 +165,7 @@ def Eliminar_Linea_Horizontales(imagen_umbral):
 
 # Función encargada de devolver el número detectado tomando la imagen binaria (bresh)
 # Asume 10 filas (0-9) y columnas variables
-def Detectar_Resultado_OMR(imagen_umbral):
+def detectar_resultado_omr(imagen_umbral):
 
     # Primero encuentro todas las cajas y contornos dentro de la imagen ya tratada
 
@@ -180,7 +196,7 @@ def Detectar_Resultado_OMR(imagen_umbral):
 
     # Si la lista final está vacía, se devuelve el error
     if len(lista_cajas) == 0:
-        print("Error: No se detectaron cajas")
+        # print("Error: No se detectaron cajas")
         return "XXXXXX"
 
 
@@ -210,11 +226,11 @@ def Detectar_Resultado_OMR(imagen_umbral):
 
     # Comparo el número de cajas esperado con el número de cajas obtenido y, si no son iguales, lo marco como error
     if len(lista_cajas) != total_esperado:
-        print(f"Error de consistencia geométrica: Se detectaron {len(lista_cajas)} cajas, pero se esperaban {total_esperado} ({columnas_esperadas} cols x 10 filas).")
+        # print(f"Error de consistencia geométrica: Se detectaron {len(lista_cajas)} cajas, pero se esperaban {total_esperado} ({columnas_esperadas} cols x 10 filas).")
         return "XXXXXX"
 
     # Ordenamos las cajas por altura con la función encargada para ello
-    lista_cajas = Ordenar_Contornos(lista_cajas, metodo="top-to-bottom")[0]
+    lista_cajas = ordenar_contornos(lista_cajas, metodo="arriba-abajo")[0]
 
     # Inicializo los resultados a X (si se detecta un número se sobreescribirá el X)
     resultados_detectados = ['X'] * columnas_esperadas
@@ -229,7 +245,7 @@ def Detectar_Resultado_OMR(imagen_umbral):
         cajas_fila_actual = lista_cajas[i : i + columnas_esperadas]
 
         # Ordeno las cajas de la misma fila de izquierda a derecha
-        cajas_fila_actual = Ordenar_Contornos(cajas_fila_actual, metodo="left-to-right")[0]
+        cajas_fila_actual = ordenar_contornos(cajas_fila_actual, metodo="izquierda-derecha")[0]
 
         # Recorro la lista de cajas de la misma fila columna por columna para examinar cada caja por separado
         for (col_idx, c) in enumerate(cajas_fila_actual):
@@ -271,7 +287,7 @@ def Detectar_Resultado_OMR(imagen_umbral):
                 else:
 
                     # Lanzamoss el error y sobreescribimos esa posición con una M (para diferenciarlo de la X)
-                    print(f"Doble marca detectada en la columna {col_idx} (Fila {resultados_detectados[col_idx]} y Fila {fila_idx})")
+                    # print(f"Doble marca detectada en la columna {col_idx} (Fila {resultados_detectados[col_idx]} y Fila {fila_idx})")
                     resultados_detectados[col_idx] = 'M'
 
     # Guardo todos los números detectados en una misma variable (de tipo str)
@@ -281,18 +297,18 @@ def Detectar_Resultado_OMR(imagen_umbral):
     return numero_final_str
 
 # Función encargada de ordenadar loss contornos (las cajas) con el método que se pida
-def Ordenar_Contornos(contornos, metodo="left-to-right"):
+def ordenar_contornos(contornos, metodo="izquierda-derecha"):
 
     # Incializamos el sentido y el índice de la variable "contornos" que se usará
     reverse = False     # Sentido normal
     i = 0               # Ordenar por coordenada X
 
     # Si queremos por altura, cambiamos el índice a 1 (coordenada Y)
-    if metodo == "top-to-bottom" or metodo == "bottom-to-top":
+    if metodo == "arriba-abajo" or metodo == "abajo-arriba":
         i = 1
 
     # Si queremos el sentido inverso, establecemos "reverse" como True
-    if metodo == "bottom-to-top" or metodo == "right-to-left":
+    if metodo == "abajo-arriba" or metodo == "derecha-izquierda":
         reverse = True
 
     # Crear una lista de bounding boxes y ordenarlas junto con los contornos
@@ -317,35 +333,35 @@ def Ordenar_Contornos(contornos, metodo="left-to-right"):
 # Main encargado de hacer pruebas de solo este script (No se usa en la aplicación final)
 def main():
 
-    RutaPDF = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Numero_Cuadricula\Epson_05112025111319(1)_Censurado.pdf"
-    RutaimagenDestino = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas"
+    rutapdf = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Numero_Cuadricula\Epson_05112025111319(1)_Censurado.pdf"
+    RutaimagenDestino = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas"
 
-    imagen = Cargar_Paginas_PDF(RutaPDF)
+    imagen = cargar_paginas_pdf(rutapdf)
 
-    coordenadas_base = Dimensiones_ROI(x = 387, y = 135, ancho = 110, alto = 170)
+    coordenadas_base = DimensionesROI(x = 387, y = 135, ancho = 110, alto = 170)
 
     dpi = 150
     factor_escala = dpi / 72.0
-    coordenadas_roi = Dimensiones_ROI(
+    coordenadas_roi = DimensionesROI(
         x=int(coordenadas_base.x * factor_escala),
         y=int(coordenadas_base.y * factor_escala),
         ancho=int(coordenadas_base.ancho * factor_escala),
         alto=int(coordenadas_base.alto * factor_escala)
     )
 
-    recorte = Extraer_ROI_Imagen(imagen, coordenadas_roi)
+    recorte = extraer_roi_imagen(imagen, coordenadas_roi)
 
-    recorte, recorte_procesado, recorte_procesado_sin_linea = Procesar_Imagen(recorte)
+    recorte, recorte_procesado, recorte_procesado_sin_linea = procesar_imagen(recorte)
 
     cv2.imwrite(os.path.join(RutaimagenDestino, rf"PruebaCuadricula.jpg"), recorte)
     cv2.imwrite(os.path.join(RutaimagenDestino, rf"PruebaCuadriculaProcesada.jpg"), recorte_procesado)
     cv2.imwrite(os.path.join(RutaimagenDestino, rf"PruebaCuadriculaProcesadaCambiada.jpg"), recorte_procesado_sin_linea)
 
 
-    num_mat = Detectar_Resultado_OMR(recorte_procesado_sin_linea)
+    num_mat = detectar_resultado_omr(recorte_procesado_sin_linea)
     print(f"El Numero de Matricula detectado es: {num_mat}")
 
-    # print(Extraer_Numero_Matricula(RutaPDF))
+    # print(extraer_numero_matricula(rutapdf))
 
 
 if __name__ == "__main__":

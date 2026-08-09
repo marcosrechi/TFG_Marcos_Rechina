@@ -47,12 +47,18 @@ def Extraer_ROI_Iamgen(Imagen, Coordenadas):
 url = "https://github.com/R4F405/Reconocimiento-de-Digitos-MNIST/raw/main/modelo_mnist.keras"
 model_filename = "modelo_mnist.keras"
 # ruta_imagen = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas\roi_extraida8.png"
-RutaPDF7Seg = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\test 7seg Epson_19092025163133 pag1.pdf"
-# RutaPDFNormal = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Epson_12112025210213 8_Censurado.pdf"
-RutaPDFNormal = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Epson_12112025210213 38_Censurado.pdf"
+RutaPDF7Seg = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Numero_7_Segmentos\test 7seg Epson_19092025163133 pag1.pdf"
+# RutaPDFNormal = r"C:\Users\marco\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Numero_A_Mano\Epson_12112025210213 8_Censurado.pdf"
+
+
+RutaPDFNormal = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Numero_A_Mano\Epson_12112025210213 2_Censurado.pdf"
+# RutaPDFNormal = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Numero_A_Mano\Epson_12112025210213 8_Censurado.pdf"
+# RutaPDFNormal = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Numero_A_Mano\Epson_12112025210213 38_Censurado.pdf"
 RutaImagenDestino = r"C:\Users\Usuario\Documents\00 OneDriveSync\03 Educacion\03 Universidad\02 Ingenieria Electronica\03 TFG\Fotos Pruebas"
-# numero_esperado = [5, 6, 8, 5, 9]
-numero_esperado = [5, 7, 7, 1, 5]
+
+numero_esperado = [5, 6, 1, 0, 0]           # Para 2
+# numero_esperado = [5, 6, 8, 5, 9]           # Para 8
+# numero_esperado = [5, 7, 7, 1, 5]           # Para 38
 
 iteracion = 1
 
