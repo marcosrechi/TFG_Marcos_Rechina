@@ -4,7 +4,7 @@
 cd /d "%~dp0"
 
 :: Ejecuta el script usando pythonw para que sea silencioso (sin consola)
-start "" pythonw.exe "WatcherModif.py"
+start "" pythonw.exe "Watcher.py"
 
 :: Cierra la ventana del terminal del batch inmediatamente
 exit
