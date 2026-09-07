@@ -180,7 +180,7 @@ def detectar_resultado_omr(imagen_umbral):
     # Inicializo la lista de cajas finales
     lista_cajas = []
 
-    # Establezo un filtro para las cajaas obtenidas, poniendo un mínimo de tamaño y de relación entre largo y ancho ("rel_ancho_altura" entre 0.5 y 1.5)
+    # Establezco un filtro para las cajas obtenidas, poniendo un mínimo de tamaño y de relación entre largo y ancho ("rel_ancho_altura" entre 0.5 y 1.5)
     tamanho_minimo = 10
     for c in lista_contornos:
 
@@ -296,7 +296,7 @@ def detectar_resultado_omr(imagen_umbral):
     # Devuelvo el número obtenido 
     return numero_final_str
 
-# Función encargada de ordenadar loss contornos (las cajas) con el método que se pida
+# Función encargada de ordenar los contornos (las cajas) con el método que se pida
 def ordenar_contornos(contornos, metodo="izquierda-derecha"):
 
     # Incializamos el sentido y el índice de la variable "contornos" que se usará

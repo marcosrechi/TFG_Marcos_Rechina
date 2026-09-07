@@ -46,8 +46,8 @@ DICCIONARIO_ALUMNOS = None
 RUTA_LOG_ERRORES = None
 
 # Datos de correo origen
-CORREO_ORIGEN = "pruebastfgmarcosrechina@gmail.com"
-PASSWORD_ORIGEN = "jjao hbsb hvee jpqh"
+CORREO_ORIGEN = "correo_predeterminado@mail.com"
+PASSWORD_ORIGEN = "aaaa aaaa aaaa aaaa"
 
 # Nombre de la asignatura en cuestión
 NOMBRE_ASIGNATURA = ""
@@ -98,7 +98,7 @@ def procesar_nuevo_pdf(ruta, callback_status):
             # Se obtiene el número de matrícula con la función del otro script
             numero_matricula = extraer_numero_matricula(ruta)
 
-            # Comprueba que el número de matrícula sea válildo
+            # Comprueba que el número de matrícula sea válido
             if "x" in numero_matricula.lower() or "m" in numero_matricula.lower():
 
                 # Guardo el error en un LOG de errores
@@ -126,7 +126,7 @@ def procesar_nuevo_pdf(ruta, callback_status):
                 callback_status(f"Alumno con número de matrícula {numero_matricula} no encontrado")
                 time.sleep(2)  # Pausa para que el usuario lea el mensaje
 
-            # Si se ha elegido enviar el correo y sse han encontrado los datos del alumno en la lista de alumnos, se envía el correo
+            # Si se ha elegido enviar el correo y se han encontrado los datos del alumno en la lista de alumnos, se envía el correo
             if CONFIG.get("enviar_correo") and datos_alumno:
                 # Escribe el correo que funciona como justificante (solo si se encuentra al alumno correspondiente en la base de datos)
                 callback_status(f"Mandando justificante por correo ...")
@@ -338,7 +338,7 @@ def actualizar_csv(numero_matricula, ruta_pdf):
     except Exception as e:
         print(f"Error leyendo archivo existente: {e}")
     
-    # Si por lo que sea no hay cabeceras en el ficShero, las incluyo para que no de error más adelante
+    # Si por lo que sea no hay cabeceras en el fichero, las incluyo para que no de error más adelante
     if not cabeceras_finales:
         cabeceras_finales = [COLUMNA_MATRICULA, COLUMNA_NOMBRE, COLUMNA_CORREO]
 
@@ -798,8 +798,9 @@ class AppMonitor:
                 with open(ruta_listado, "r", encoding="utf-8-sig") as f:
                     DICCIONARIO_ALUMNOS = json.load(f)
 
-                    # Guardo las cabeceras del primer elemento (asumimos que todas son iguales y se mantienen la norma) en las variables globales
-                    self.guardar_nombres_columnas(DICCIONARIO_ALUMNOS[0].keys())
+                    # Guardo las cabeceras del primer registro (asumimos que todas son iguales y se mantienen la norma) en las variables globales
+                    primer_registro = next(iter(DICCIONARIO_ALUMNOS.values()))
+                    self.guardar_nombres_columnas(primer_registro.keys())
 
             # Si es de formato CSV
             else:
@@ -981,7 +982,7 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = AppMonitor(root)
 
-    # Para que esté ejectuando siempre el Monitor
+    # Para que se esté ejecutando siempre el Monitor
     root.mainloop()
 
 
